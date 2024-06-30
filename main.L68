@@ -1,0 +1,2355 @@
+00001000 Starting Address
+Assembler used: EASy68K Editor/Assembler v5.16.01
+Created On: 6/28/2024 10:30:06 AM
+
+00000000                             1  *-----------------------------------------------------------
+00000000                             2  * Title      : main
+00000000                             3  * Written by : Manas Malla
+00000000                             4  * Date       : 05/30/2024
+00000000                             5  * Description: The main game loop of the brick breaker game.
+00000000                             6  *-----------------------------------------------------------
+00001000                             7      ORG    $1000
+00001000                             8  START:                  ; first instruction of program
+00001000                             9  
+00001000                            10      ; display the title screen first, outside of the gameloop. it has its own loop (in separate file)
+00001000                            11      ; enables double buffer, sets screen size, loading screens, and first level
+00001000  4EB9 00003F9C             12      jsr     initialization
+00001006                            13      
+00001006                            14      * ------- for skipping the title screen -------
+00001006                            15      ; double buffer
+00001006                            16      ;move.l  #DRAWING_MODE_TRAP, d0
+00001006                            17      ;move.l  #DOUBLE_BUFFER, d1
+00001006                            18      ;trap    #15
+00001006                            19      
+00001006                            20      ; set screen size
+00001006                            21      ;move.l  #SCREEN_SIZE_TRAP, d0
+00001006                            22      ;move.l  #SCREEN_WIDTH<<16+SCREEN_HEIGHT, d1
+00001006                            23      ;trap    #15
+00001006                            24      
+00001006                            25      ;jsr     initial_level
+00001006                            26  
+00001006                            27      * ---------------------------------------------
+00001006                            28  
+00001006                            29  game_loop:
+00001006                            30      ; calculate delta time
+00001006  4EB9 0000105E             31      jsr     time_calculations
+0000100C                            32  
+0000100C                            33      ; check for input
+0000100C  4EB9 00003A0A             34      jsr     check_inputs
+00001012                            35      
+00001012                            36      ; inval ball/paddle
+00001012  4EB9 00003B8C             37      jsr     inval_paddle
+00001018  4EB9 00003B2E             38      jsr     inval_ball
+0000101E                            39      
+0000101E                            40      ; check for collisions (ball/wall, ball/paddle, ball/bricks)
+0000101E  4EB9 00003662             41      jsr check_collisions
+00001024                            42      
+00001024                            43      ; update game physics (velocity and acceleration)
+00001024  4EB9 00003D00             44      jsr     update_ball
+0000102A                            45      
+0000102A                            46      ; render paddle and ball, and fix paddle rail
+0000102A  4EB9 00003ACE             47      jsr     draw_paddle
+00001030  4EB9 00003C5C             48      jsr     inval_paddle_rail
+00001036  4EB9 00003A6E             49      jsr     draw_ball
+0000103C                            50      
+0000103C                            51      ; check game state - level complete
+0000103C  2039 000035C0             52      move.l  BricksHit, d0
+00001042  2239 00003172             53      move.l  BrickCount, d1
+00001048  0481 00000000             54      sub.l   #0, d1 ; this is for level testing.
+0000104E  B280                      55      cmp.l   d0, d1
+00001050  6700 02B0                 56      beq     next_level
+00001054                            57  
+00001054  203C 0000005E             58      move.l  #COPY_BUFFER_TRAP, d0
+0000105A  4E4F                      59      trap    #15
+0000105C                            60  
+0000105C                            61      ; loop to handle next frame
+0000105C  60A8                      62      bra     game_loop
+0000105E                            63      
+0000105E                            64  time_calculations:
+0000105E  203C 00000008             65      move.l  #TIME_MIDNIGHT_TRAP, d0
+00001064  4E4F                      66      trap    #15
+00001066                            67      
+00001066  2E01                      68      move.l  d1, d7 ; d7 is current time
+00001068  9EB9 00001084             69      sub.l   LastTime, d7 ; d7 is delta time (current - last)
+0000106E  23C1 00001084             70      move.l  d1, LastTime
+00001074  23C7 00001080             71      move.l  d7, DeltaTime
+0000107A                            72      
+0000107A  4E75                      73      rts
+0000107C                            74      
+0000107C                            75      
+0000107C                            76  end:
+0000107C                            77  
+0000107C  FFFF FFFF                 78      SIMHALT             ; halt simulator
+00001080                            79  
+00001080                            80  * Put variables and constants here
+00001080= 00000000                  81  DeltaTime  dc.l    0
+00001084= 00000000                  82  LastTime   dc.l    0
+00001088                            83  
+00001088                            84      include 'random.X68'
+00001088                            85  ALL_REG                 REG     D0-D7/A0-A6
+00001088                            86  
+00001088  =00000008                 87  GET_TIME_COMMAND        equ     8
+00001088                            88  
+00001088                            89  seed_random_number
+00001088  48E7 FFFE                 90          movem.l ALL_REG,-(sp)           ;; What does this do?
+0000108C  4286                      91          clr.l   d6
+0000108E  103C 0008                 92          move.b  #GET_TIME_COMMAND,d0    ;; What if you used the same seed?
+00001092  4E4F                      93          TRAP    #15
+00001094                            94  
+00001094  23C1 00001154             95          move.l  d1,RANDOMVAL
+0000109A  4CDF 7FFF                 96          movem.l (sp)+,ALL_REG
+0000109E  4E75                      97          rts
+000010A0                            98          
+000010A0                            99  random_word_d6
+000010A0  48E7 FFFE                100          movem.l ALL_REG,-(sp)
+000010A4  4285                     101          clr.l   d5
+000010A6                           102          
+000010A6  4EB9 000010E6            103          jsr     random_byte_d6
+000010AC  1A06                     104          move.b  d6,d5
+000010AE  4EB9 000010E6            105          jsr     random_byte_d6
+000010B4  E18D                     106          lsl.l   #8,d5
+000010B6  1A06                     107          move.b  d6,d5
+000010B8  23C5 0000115C            108          move.l  d5, TEMPRANDOMWORD
+000010BE                           109          
+000010BE  303C 01A9                110          move.w  #425, d0
+000010C2  2239 0000115C            111          move.l  TEMPRANDOMWORD, d1
+000010C8  82C0                     112          divu    d0, d1 ; remainder in upper, quotient in lower word
+000010CA                           113          
+000010CA  4241                     114          clr.w   d1
+000010CC  4841                     115          swap    d1
+000010CE                           116          
+000010CE  0641 0087                117          add.w   #135, d1
+000010D2  33C1 0000115C            118          move.w  d1, TEMPRANDOMWORD
+000010D8                           119          
+000010D8  4CDF 7FFF                120          movem.l (sp)+,ALL_REG
+000010DC  4286                     121          clr.l   d6
+000010DE  3C39 0000115C            122          move.w  TEMPRANDOMWORD, d6
+000010E4                           123          
+000010E4  4E75                     124          rts
+000010E6                           125  
+000010E6                           126  random_byte_d6
+000010E6  48E7 8000                127          movem.l d0,-(sp)
+000010EA  48E7 4000                128          movem.l d1,-(sp)
+000010EE  48E7 2000                129          movem.l d2,-(sp)
+000010F2  2039 00001154            130          move.l  RANDOMVAL,d0
+000010F8  72AF                     131          moveq   #$AF-$100,d1
+000010FA  7412                     132          moveq   #18,d2
+000010FC                           133  Ninc0   
+000010FC  D080                     134      add.l   d0,d0
+000010FE  6400 0004                135      bcc Ninc1
+00001102  B300                     136      eor.b   d1,d0
+00001104                           137  Ninc1
+00001104  51CA FFF6                138      dbf d2,Ninc0
+00001108                           139      
+00001108  23C0 00001154            140      move.l  d0,RANDOMVAL
+0000110E  4286                     141      clr.l   d6
+00001110  1C00                     142      move.b  d0,d6
+00001112                           143      
+00001112  4CDF 0004                144          movem.l (sp)+,d2
+00001116  4CDF 0002                145          movem.l (sp)+,d1
+0000111A  4CDF 0001                146          movem.l (sp)+,d0
+0000111E  4E75                     147          rts
+00001120                           148          
+00001120                           149  
+00001120                           150  random_long_d6
+00001120  48E7 FFFE                151          movem.l ALL_REG,-(sp)
+00001124  4EB8 10E6                152          jsr     random_byte_d6
+00001128  1A06                     153          move.b  d6,d5
+0000112A  4EB8 10E6                154          jsr     random_byte_d6
+0000112E  E18D                     155          lsl.l   #8,d5
+00001130  1A06                     156          move.b  d6,d5
+00001132  4EB8 10E6                157          jsr     random_byte_d6
+00001136  E18D                     158          lsl.l   #8,d5
+00001138  1A06                     159          move.b  d6,d5
+0000113A  4EB8 10E6                160          jsr     random_byte_d6
+0000113E  E18D                     161          lsl.l   #8,d5
+00001140  1A06                     162          move.b  d6,d5
+00001142  23C5 00001158            163          move.l  d5,TEMPRANDOMLONG
+00001148                           164          
+00001148  4CDF 7FFF                165          movem.l (sp)+,ALL_REG
+0000114C  2C39 00001158            166          move.l  TEMPRANDOMLONG,d6
+00001152  4E75                     167          rts
+00001154                           168  
+00001154                           169  
+00001154                           170  RANDOMVAL       ds.l    1
+00001158                           171  TEMPRANDOMLONG  ds.l    1
+0000115C                           172  TEMPRANDOMWORD  ds.w    1
+0000115E                           173  
+0000115E                           174  
+0000115E                           175  
+0000115E                           176  
+0000115E                           177  -------------------- end include --------------------
+0000115E                           178      include 'sound_manager.X68'
+0000115E                           179  
+0000115E  =0000004A                180  LOAD_SOUND_TRAP     equ     74
+0000115E  =0000004B                181  PLAY_SOUND_TRAP     equ     75
+0000115E                           182  
+0000115E                           183  load_sounds:
+0000115E  48E7 0040                184      movem.l a1, -(sp)
+00001162                           185  
+00001162  704A                     186      move.l  #LOAD_SOUND_TRAP, d0
+00001164  43F9 00001210            187      lea     GameOverSound, a1
+0000116A  7201                     188      move.l  #1, d1
+0000116C  4E4F                     189      trap    #15
+0000116E                           190      
+0000116E  704A                     191      move.l  #LOAD_SOUND_TRAP, d0
+00001170  43F9 00001226            192      lea     BrickBreakSound, a1
+00001176  7202                     193      move.l  #2, d1
+00001178  4E4F                     194      trap    #15
+0000117A                           195      
+0000117A  704A                     196      move.l  #LOAD_SOUND_TRAP, d0
+0000117C  43F9 0000123C            197      lea     NextLevelSound, a1
+00001182  7203                     198      move.l  #3, d1
+00001184  4E4F                     199      trap    #15
+00001186                           200      
+00001186  704A                     201      move.l  #LOAD_SOUND_TRAP, d0
+00001188  43F9 0000124F            202      lea     WinSound, a1
+0000118E  7204                     203      move.l  #4, d1
+00001190  4E4F                     204      trap    #15
+00001192                           205      
+00001192  704A                     206      move.l  #LOAD_SOUND_TRAP, d0
+00001194  43F9 00001262            207      lea     LoseLifeSound, a1
+0000119A  7205                     208      move.l  #5, d1
+0000119C  4E4F                     209      trap    #15
+0000119E                           210      
+0000119E  704A                     211      move.l  #LOAD_SOUND_TRAP, d0
+000011A0  43F9 00001276            212      lea     CollisionSound, a1
+000011A6  7206                     213      move.l  #6, d1
+000011A8  4E4F                     214      trap    #15
+000011AA                           215      
+000011AA  4CDF 0200                216      movem.l (sp)+, a1
+000011AE                           217      
+000011AE  4E75                     218      rts
+000011B0                           219      
+000011B0                           220  play_game_over_sound:
+000011B0  48E7 FFFE                221      movem.l ALL_REG, -(sp)
+000011B4  704B                     222      move.l  #PLAY_SOUND_TRAP, d0
+000011B6  7201                     223      move.l  #1, d1
+000011B8  4E4F                     224      trap    #15
+000011BA  4CDF 7FFF                225      movem.l (sp)+, ALL_REG
+000011BE                           226      
+000011BE  4E75                     227      rts
+000011C0                           228  
+000011C0                           229  play_brick_break_sound:
+000011C0  48E7 FFFE                230      movem.l ALL_REG, -(sp)
+000011C4  704B                     231      move.l  #PLAY_SOUND_TRAP, d0
+000011C6  7202                     232      move.l  #2, d1
+000011C8  4E4F                     233      trap    #15
+000011CA  4CDF 7FFF                234      movem.l (sp)+, ALL_REG
+000011CE                           235      
+000011CE  4E75                     236      rts
+000011D0                           237  
+000011D0                           238  play_next_level_sound:
+000011D0  48E7 FFFE                239      movem.l ALL_REG, -(sp)
+000011D4  704B                     240      move.l  #PLAY_SOUND_TRAP, d0
+000011D6  7203                     241      move.l  #3, d1
+000011D8  4E4F                     242      trap    #15
+000011DA  4CDF 7FFF                243      movem.l (sp)+, ALL_REG
+000011DE                           244      
+000011DE  4E75                     245      rts
+000011E0                           246  
+000011E0                           247  play_win_sound:
+000011E0  48E7 FFFE                248      movem.l ALL_REG, -(sp)
+000011E4  704B                     249      move.l  #PLAY_SOUND_TRAP, d0
+000011E6  7204                     250      move.l  #4, d1
+000011E8  4E4F                     251      trap    #15
+000011EA  4CDF 7FFF                252      movem.l (sp)+, ALL_REG
+000011EE                           253      
+000011EE  4E75                     254      rts
+000011F0                           255      
+000011F0                           256  play_lose_life_sound:
+000011F0  48E7 FFFE                257      movem.l ALL_REG, -(sp)
+000011F4  704B                     258      move.l  #PLAY_SOUND_TRAP, d0
+000011F6  7205                     259      move.l  #5, d1
+000011F8  4E4F                     260      trap    #15
+000011FA  4CDF 7FFF                261      movem.l (sp)+, ALL_REG
+000011FE                           262      
+000011FE  4E75                     263      rts
+00001200                           264      
+00001200                           265  play_collision_sound:
+00001200  48E7 FFFE                266      movem.l ALL_REG, -(sp)
+00001204  704B                     267      move.l  #PLAY_SOUND_TRAP, d0
+00001206  7206                     268      move.l  #6, d1
+00001208  4E4F                     269      trap    #15
+0000120A  4CDF 7FFF                270      movem.l (sp)+, ALL_REG
+0000120E                           271      
+0000120E  4E75                     272      rts
+00001210                           273  
+00001210= 61 73 73 65 74 73 ...    274  GameOverSound       dc.b    'assets/gameoverhe.wav', 0
+00001226= 61 73 73 65 74 73 ...    275  BrickBreakSound     dc.b    'assets/brickbreak.wav', 0
+0000123C= 61 73 73 65 74 73 ...    276  NextLevelSound      dc.b    'assets/levelup.wav', 0
+0000124F= 61 73 73 65 74 73 ...    277  WinSound            dc.b    'assets/victory.wav', 0
+00001262= 61 73 73 65 74 73 ...    278  LoseLifeSound       dc.b    'assets/loselife.wav', 0
+00001276= 61 73 73 65 74 73 ...    279  CollisionSound      dc.b    'assets/collision.wav', 0
+0000128C= 00000000                 280  PaddingLong         dc.l    0
+00001290                           281  
+00001290                           282  
+00001290                           283  
+00001290                           284  -------------------- end include --------------------
+00001290                           285      include 'draw_bricks.X68'
+00001290                           286  
+00001290  =FFFFFFFF                287  END_LEVEL   equ     $FFFFFFFF
+00001290  =00000018                288  BRICK_SIZE  equ     24
+00001290  =00000008                289  LEVEL_INFO  equ     8
+00001290                           290  
+00001290                           291  load_level_file:
+00001290  47F9 000013D6            292      lea     LevelFile, a3
+00001296  D7F9 00003176            293      add.l   LevelOffset, a3
+0000129C                           294  
+0000129C                           295  draw_level_file:
+0000129C  23CB 0000317A            296      move.l  a3, StartLevelAddr
+000012A2  201B                     297      move.l  (a3)+, d0 ; number of bricks
+000012A4                           298      
+000012A4                           299      ; check if end of file (0xEEEEEEEE)
+000012A4  B0BC EEEEEEEE            300      cmp.l   #$EEEEEEEE, d0
+000012AA  6700 225C                301      beq     win_state
+000012AE                           302      
+000012AE  23C0 00003172            303      move.l  d0, BrickCount
+000012B4  42B9 0000317E            304      clr.l   CurrentBrick
+000012BA                           305      
+000012BA                           306  draw_next_brick:
+000012BA  2239 00003172            307      move.l  BrickCount, d1
+000012C0  2439 0000317E            308      move.l  CurrentBrick, d2
+000012C6  B481                     309      cmp.l   d1, d2
+000012C8  6700 0036                310      beq     done_drawing_level
+000012CC                           311      
+000012CC                           312      ; obtain the parameter info
+000012CC  2A1B                     313      move.l  (a3)+, d5 ; left x
+000012CE  241B                     314      move.l  (a3)+, d2 ; upper y
+000012D0  261B                     315      move.l  (a3)+, d3 ; right x
+000012D2  281B                     316      move.l  (a3)+, d4 ; lower y
+000012D4  221B                     317      move.l  (a3)+, d1 ; color
+000012D6  2C1B                     318      move.l  (a3)+, d6 ; num hits
+000012D8                           319      
+000012D8                           320      ; draw the current brick
+000012D8  203C 00000051            321      move.l  #SET_FILL_TRAP, d0
+000012DE  4E4F                     322      trap    #15
+000012E0                           323      
+000012E0  203C 00000050            324      move.l  #SET_PEN_COLOR_TRAP, d0
+000012E6  223C 00000000            325      move.l  #BLACK, d1
+000012EC  4E4F                     326      trap    #15
+000012EE                           327      
+000012EE  203C 00000057            328      move.l  #FILLED_RECT_TRAP, d0
+000012F4  2205                     329      move.l  d5, d1
+000012F6  4E4F                     330      trap    #15
+000012F8                           331      
+000012F8  52B9 0000317E            332      addq.l  #1, CurrentBrick
+000012FE  60BA                     333      bra     draw_next_brick
+00001300                           334      
+00001300                           335  done_drawing_level:
+00001300  4E75                     336      rts
+00001302                           337      
+00001302                           338  next_level:
+00001302                           339      ; called whenever the level is complete, prepares the next level
+00001302  588B                     340      addq.l  #4, a3 ; skip past the FFFFFFFF indicating end
+00001304  52B9 000035B8            341      addq.l  #1, CurrentLevel
+0000130A                           342      
+0000130A  4EB8 11D0                343      jsr     play_next_level_sound
+0000130E                           344      
+0000130E                           345      ; inval the field
+0000130E  203C 00000051            346      move.l  #SET_FILL_TRAP, d0
+00001314  223C 00000000            347      move.l  #BLACK, d1
+0000131A  4E4F                     348      trap    #15
+0000131C                           349      
+0000131C  203C 00000050            350      move.l  #SET_PEN_COLOR_TRAP, d0
+00001322  4E4F                     351      trap    #15
+00001324                           352      
+00001324  203C 00000057            353      move.l  #FILLED_RECT_TRAP, d0
+0000132A  7219                     354      move.l  #25, d1
+0000132C  7419                     355      move.l  #25, d2
+0000132E  263C 00000280            356      move.l  #640, d3
+00001334  283C 00000258            357      move.l  #600, d4
+0000133A  4E4F                     358      trap    #15
+0000133C                           359      
+0000133C                           360      ; inval the level number
+0000133C  4EB9 00003254            361      jsr     inval_level_num
+00001342                           362      
+00001342  4EB8 129C                363      jsr     draw_level_file
+00001346                           364     
+00001346                           365      ; reset the hit brick count
+00001346  2039 000035C0            366      move.l  BricksHit, d0
+0000134C  D1B9 000035C4            367      add.l   d0, TotalBricksHit
+00001352  23FC 00000000 000035C0   368      move.l  #0, BricksHit
+0000135C                           369      
+0000135C                           370      ; draw the new level number
+0000135C  4EB9 00003200            371      jsr     draw_level_num
+00001362                           372      
+00001362  4EB9 00003BF2            373      jsr     draw_paddle_rail
+00001368                           374      
+00001368                           375      ; reset the ball and paddle position/velocity/acceleration
+00001368  4EB9 000033C2            376      jsr     reset_ball_paddle
+0000136E                           377      
+0000136E                           378      ; display the countdown timer, 3 seconds
+0000136E  4EB9 00003310            379      jsr     countdown_timer_display
+00001374                           380      
+00001374                           381      ; refresh the time calculation
+00001374  4EB8 105E                382      jsr     time_calculations
+00001378                           383      
+00001378  6000 FC8C                384      bra     game_loop
+0000137C                           385      
+0000137C                           386  inval_brick:
+0000137C                           387      ; d1 has left x in fixed point
+0000137C                           388      ; d2 has upper y in fixed point
+0000137C                           389      ; d3 has right x in fixed point
+0000137C                           390      ; d4 has lower y in fixed point
+0000137C  2F01                     391      move.l  d1, -(sp)
+0000137E  203C 00000050            392      move.l  #SET_PEN_COLOR_TRAP, d0
+00001384  223C 00000000            393      move.l  #BLACK, d1
+0000138A  4E4F                     394      trap    #15
+0000138C                           395      
+0000138C                           396      ; check if d6 is greater/e than 1. if it is, that means its a brick that
+0000138C                           397      ; takes multiple hits. simply subtract 50 from the color (d5).
+0000138C  BCBC 00000001            398      cmp.l   #1, d6
+00001392  6C00 002A                399      bge     multi_hit_color
+00001396                           400      
+00001396  203C 00000051            401      move.l  #SET_FILL_TRAP, d0
+0000139C  223C 00000000            402      move.l  #BLACK, d1
+000013A2  4E4F                     403      trap    #15
+000013A4                           404      
+000013A4                           405      ; increment total bricks hit
+000013A4  52B9 000035C0            406      addq.l  #1, BricksHit
+000013AA                           407      
+000013AA                           408      continue_inval_brick:
+000013AA  203C 00000057            409          move.l  #FILLED_RECT_TRAP, d0
+000013B0  221F                     410          move.l  (sp)+, d1
+000013B2  E081                     411          asr.l   #FRAC_BITS, d1
+000013B4  E082                     412          asr.l   #FRAC_BITS, d2
+000013B6  E083                     413          asr.l   #FRAC_BITS, d3
+000013B8  E084                     414          asr.l   #FRAC_BITS, d4
+000013BA  4E4F                     415          trap    #15
+000013BC                           416      
+000013BC  4E75                     417          rts
+000013BE                           418      
+000013BE                           419      multi_hit_color:
+000013BE                           420          ; set new color
+000013BE  0685 00000064            421          add.l   #100, d5
+000013C4  203C 00000051            422          move.l  #SET_FILL_TRAP, d0
+000013CA  2205                     423          move.l  d5, d1
+000013CC  4E4F                     424          trap    #15
+000013CE                           425          
+000013CE                           426          ; save the new color
+000013CE  518C                     427          subq.l  #8, a4 
+000013D0  2885                     428          move.l  d5, (a4)
+000013D2  508C                     429          addq.l  #8, a4
+000013D4                           430          
+000013D4  60D4                     431          bra     continue_inval_brick
+000013D6                           432              
+000013D6                           433  
+000013D6                           434  LevelFile       INCBIN  'level.bin'
+00003172= 00000000                 435  BrickCount      dc.l    0
+00003176= 00000000                 436  LevelOffset     dc.l    0 ; this is for testing certain levels based on the number of bytes it takes up
+0000317A= 00000000                 437  StartLevelAddr  dc.l    0
+0000317E= 00000000                 438  CurrentBrick    dc.l    0
+00003182                           439  
+00003182                           440  
+00003182                           441  
+00003182                           442  
+00003182                           443  
+00003182                           444  
+00003182                           445  
+00003182                           446  
+00003182                           447  
+00003182                           448  
+00003182                           449  
+00003182                           450  -------------------- end include --------------------
+00003182                           451      include 'game_state.X68'
+00003182                           452  
+00003182                           453  draw_lives:
+00003182  2A39 0000358C            454      move.l  Lives, d5
+00003188  43F9 00003590            455      lea     LifePositions, a1
+0000318E                           456  
+0000318E                           457      life_loop:
+0000318E                           458      ; draw a ball for each life remaining
+0000318E  203C 00000050            459      move.l  #SET_PEN_COLOR_TRAP, d0
+00003194  223C 00FFFFFF            460      move.l  #WHITE, d1
+0000319A  4E4F                     461      trap    #15
+0000319C                           462      
+0000319C  203C 0000005B            463      move.l  #UNFILL_ELLIPSE_TRAP, d0
+000031A2  3219                     464      move.w  (a1)+, d1
+000031A4  3419                     465      move.w  (a1)+, d2
+000031A6  3619                     466      move.w  (a1)+, d3
+000031A8  3819                     467      move.w  (a1)+, d4
+000031AA  4E4F                     468      trap    #15
+000031AC                           469      
+000031AC  51CD FFE0                470      dbra    d5, life_loop
+000031B0                           471      
+000031B0  4E75                     472      rts
+000031B2                           473      
+000031B2                           474  inval_life:
+000031B2  43F9 00003590            475      lea     LifePositions, a1
+000031B8  203C 00000050            476      move.l  #SET_PEN_COLOR_TRAP, d0
+000031BE  223C 00000000            477      move.l  #BLACK, d1
+000031C4  4E4F                     478      trap    #15
+000031C6                           479      
+000031C6  203C 00000051            480      move.l  #SET_FILL_TRAP, d0
+000031CC  223C 00000000            481      move.l  #BLACK, d1
+000031D2  4E4F                     482      trap    #15
+000031D4                           483      
+000031D4  2439 0000358C            484      move.l  Lives, d2
+000031DA  E78A                     485      lsl.l   #3, d2
+000031DC  D3C2                     486      add.l   d2, a1
+000031DE                           487      
+000031DE  203C 00000058            488      move.l  #FILL_ELLIPSE_TRAP, d0
+000031E4  3219                     489      move.w  (a1)+, d1
+000031E6  3419                     490      move.w  (a1)+, d2
+000031E8  5581                     491      subq.l  #2, d1
+000031EA  5582                     492      subq.l  #2, d2
+000031EC  3601                     493      move.w  d1, d3
+000031EE  3802                     494      move.w  d2, d4
+000031F0  0683 00000010            495      add.l   #16, d3
+000031F6  0684 00000010            496      add.l   #16, d4
+000031FC  4E4F                     497      trap    #15
+000031FE                           498      
+000031FE  4E75                     499      rts
+00003200                           500      
+00003200                           501  draw_level_num:
+00003200  203C 00000051            502      move.l  #SET_FILL_TRAP, d0
+00003206  223C 00FFFFFF            503      move.l  #WHITE, d1
+0000320C  4E4F                     504      trap    #15
+0000320E                           505      
+0000320E  203C 00000050            506      move.l  #SET_PEN_COLOR_TRAP, d0
+00003214  4E4F                     507      trap    #15
+00003216                           508      
+00003216  2F3C 00000000            509      move.l  #0, -(sp)
+0000321C  2F3C 000002CB            510      move.l  #715, -(sp)
+00003222  2F3C 0000002D            511      move.l  #45, -(sp)
+00003228  4EB9 000035C8            512      jsr     segment_display
+0000322E  DFFC 0000000C            513      add.l   #12, sp
+00003234                           514  
+00003234  2F39 000035B8            515      move.l  CurrentLevel, -(sp)
+0000323A  2F3C 000002DA            516      move.l  #730, -(sp)
+00003240  2F3C 0000002D            517      move.l  #45, -(sp)
+00003246  4EB9 000035C8            518      jsr     segment_display
+0000324C  DFFC 0000000C            519      add.l   #12, sp
+00003252                           520      
+00003252  4E75                     521      rts
+00003254                           522      
+00003254                           523  inval_level_num:
+00003254  203C 00000051            524      move.l  #SET_FILL_TRAP, d0
+0000325A  223C 00000000            525      move.l  #BLACK, d1
+00003260  4E4F                     526      trap    #15
+00003262                           527      
+00003262  203C 00000057            528      move.l  #FILLED_RECT_TRAP, d0
+00003268  223C 000002BC            529      move.l  #700, d1
+0000326E  7428                     530      move.l  #40, d2
+00003270  263C 000002E9            531      move.l  #745, d3
+00003276  784B                     532      move.l  #75, d4
+00003278  4E4F                     533      trap    #15
+0000327A                           534      
+0000327A  4E75                     535      rts
+0000327C                           536      
+0000327C                           537  draw_round:
+0000327C  203C 00000051            538      move.l  #SET_FILL_TRAP, d0
+00003282  223C 00FFFFFF            539      move.l  #WHITE, d1
+00003288  4E4F                     540      trap    #15
+0000328A                           541      
+0000328A  203C 00000050            542      move.l  #SET_PEN_COLOR_TRAP, d0
+00003290  4E4F                     543      trap    #15
+00003292                           544  
+00003292  2F3C 00000000            545      move.l  #0, -(sp)
+00003298  2F3C 000002CB            546      move.l  #715, -(sp)
+0000329E  2F3C 00000212            547      move.l  #530, -(sp)
+000032A4  4EB9 000035C8            548      jsr     segment_display
+000032AA  DFFC 0000000C            549      add.l   #12, sp
+000032B0                           550      
+000032B0  2F39 000035BC            551      move.l  CurrentRound, -(sp)
+000032B6  2F3C 000002DA            552      move.l  #730, -(sp)
+000032BC  2F3C 00000212            553      move.l  #530, -(sp)
+000032C2  4EB9 000035C8            554      jsr     segment_display
+000032C8  DFFC 0000000C            555      add.l   #12, sp
+000032CE                           556      
+000032CE  203C 0000005E            557      move.l  #COPY_BUFFER_TRAP, d0
+000032D4  4E4F                     558      trap    #15
+000032D6                           559      
+000032D6  4E75                     560      rts
+000032D8                           561      
+000032D8                           562  inval_round:
+000032D8  203C 00000051            563      move.l  #SET_FILL_TRAP, d0
+000032DE  223C 00000000            564      move.l  #BLACK, d1
+000032E4  4E4F                     565      trap    #15
+000032E6                           566      
+000032E6  203C 00000050            567      move.l  #SET_PEN_COLOR_TRAP, d0
+000032EC  4E4F                     568      trap    #15
+000032EE                           569      
+000032EE  203C 00000057            570      move.l  #FILLED_RECT_TRAP, d0
+000032F4  223C 000002BC            571      move.l  #700, d1
+000032FA  243C 0000020D            572      move.l  #525, d2
+00003300  263C 000002E9            573      move.l  #745, d3
+00003306  283C 00000230            574      move.l  #560, d4
+0000330C  4E4F                     575      trap    #15
+0000330E                           576      
+0000330E  4E75                     577      rts
+00003310                           578  
+00003310                           579  countdown_timer_display:
+00003310                           580      ; displays a 3 second countdown below the ball
+00003310  7E03                     581      move.l  #3, d7
+00003312                           582      
+00003312                           583      countdown_loop:
+00003312                           584          ; inval the area for the countdown
+00003312  4EB9 00003370            585          jsr     inval_countdown_timer
+00003318                           586          
+00003318                           587          ; display the 7 segment display under the ball
+00003318  203C 00000051            588          move.l  #SET_FILL_TRAP, d0
+0000331E  223C 00FFFFFF            589          move.l  #WHITE, d1
+00003324  4E4F                     590          trap    #15
+00003326                           591      
+00003326  203C 00000050            592          move.l  #SET_PEN_COLOR_TRAP, d0
+0000332C  4E4F                     593          trap    #15
+0000332E                           594          
+0000332E                           595          ; ball position calculations
+0000332E  2039 0000396E            596          move.l  BallXPos, d0
+00003334  E088                     597          lsr.l   #FRAC_BITS, d0
+00003336  5B80                     598          sub.l   #5, d0
+00003338  2239 00003972            599          move.l  BallYPos, d1
+0000333E  E089                     600          lsr.l   #FRAC_BITS, d1
+00003340  0681 00000019            601          add.l   #25, d1
+00003346                           602          
+00003346  2F07                     603          move.l  d7, -(sp)
+00003348  2F00                     604          move.l  d0, -(sp)
+0000334A  2F01                     605          move.l  d1, -(sp)
+0000334C  4EB9 000035C8            606          jsr     segment_display
+00003352  DFFC 0000000C            607          add.l   #12, sp
+00003358                           608          
+00003358  203C 0000005E            609          move.l  #COPY_BUFFER_TRAP, d0
+0000335E  4E4F                     610          trap    #15
+00003360                           611          
+00003360                           612          ; wait for 1 second
+00003360  203C 00000017            613          move.l  #DELAY_TRAP, d0
+00003366  7264                     614          move.l  #100, d1
+00003368  4E4F                     615          trap    #15
+0000336A                           616      
+0000336A  51CF FFA6                617          dbra    d7, countdown_loop
+0000336E                           618          
+0000336E  4E75                     619          rts
+00003370                           620      
+00003370                           621  inval_countdown_timer:
+00003370                           622      ; inval the area that the countdown timer is in
+00003370  203C 00000051            623      move.l  #SET_FILL_TRAP, d0
+00003376  223C 00000000            624      move.l  #BLACK, d1
+0000337C  4E4F                     625      trap    #15
+0000337E                           626      
+0000337E  203C 00000050            627      move.l  #SET_PEN_COLOR_TRAP, d0
+00003384  223C 00000000            628      move.l  #BLACK, d1
+0000338A  4E4F                     629      trap    #15
+0000338C                           630      
+0000338C  203C 00000057            631      move.l  #FILLED_RECT_TRAP, d0
+00003392  2239 0000396E            632      move.l  BallXPos, d1
+00003398  E089                     633      lsr.l   #FRAC_BITS, d1
+0000339A  0481 0000000F            634      sub.l   #15, d1
+000033A0  2439 00003972            635      move.l  BallYPos, d2
+000033A6  E08A                     636      lsr.l   #FRAC_BITS, d2
+000033A8  0682 00000014            637      add.l   #20, d2
+000033AE  2601                     638      move.l  d1, d3
+000033B0  0683 0000001E            639      add.l   #30, d3
+000033B6  2802                     640      move.l  d2, d4
+000033B8  0684 0000001E            641      add.l   #30, d4
+000033BE  4E4F                     642      trap    #15
+000033C0                           643      
+000033C0  4E75                     644      rts
+000033C2                           645      
+000033C2                           646  reset_ball_paddle:
+000033C2                           647      ; reset paddle position
+000033C2  203C 00000190            648      move.l  #SCREEN_WIDTH/2, d0
+000033C8  E188                     649      lsl.l   #FRAC_BITS, d0
+000033CA  23C0 00003992            650      move.l  d0, PaddleXPos
+000033D0                           651      
+000033D0                           652      ; reset ball position, but with a random x position ; FIXME
+000033D0  4EB8 10A0                653      jsr     random_word_d6
+000033D4  2006                     654      move.l  d6, d0
+000033D6  E188                     655      lsl.l   #FRAC_BITS, d0
+000033D8  23C0 0000396E            656      move.l  d0, BallXPos
+000033DE  203C 0000012C            657      move.l  #SCREEN_HEIGHT/2, d0
+000033E4  0680 00000050            658      add.l   #80, d0
+000033EA  E188                     659      lsl.l   #FRAC_BITS, d0
+000033EC  23C0 00003972            660      move.l  d0, BallYPos
+000033F2                           661      
+000033F2                           662      ; reset ball velocity and acceleration
+000033F2  7000                     663      move.l  #0, d0
+000033F4  E180                     664      asl.l   #FRAC_BITS, d0
+000033F6  23C0 00003976            665      move.l  d0, BallXVel
+000033FC  7002                     666      move.l  #2, d0
+000033FE  E180                     667      asl.l   #FRAC_BITS, d0
+00003400  23C0 0000397A            668      move.l  d0, BallYVel
+00003406                           669      
+00003406  7001                     670      move.l  #1, d0
+00003408  23C0 0000397E            671      move.l  d0, BallYAcc
+0000340E                           672      
+0000340E  203C 00000190            673      move.l  #SCREEN_WIDTH/2, d0
+00003414  0480 00000028            674      sub.l   #40, d0
+0000341A  E188                     675      lsl.l   #FRAC_BITS, d0
+0000341C  23C0 00003DD8            676      move.l  d0, OldPaddleLeft
+00003422                           677      
+00003422  203C 00000190            678      move.l  #SCREEN_WIDTH/2, d0
+00003428  0680 00000028            679      add.l   #40, d0
+0000342E  E188                     680      lsl.l   #FRAC_BITS, d0
+00003430  23C0 00003DDC            681      move.l  d0, OldPaddleRight
+00003436                           682      
+00003436  4EB9 00003B8C            683      jsr     inval_paddle
+0000343C  4EB9 00003B2E            684      jsr     inval_ball
+00003442                           685      
+00003442  4EB9 00003ACE            686      jsr     draw_paddle
+00003448  4EB9 00003A6E            687      jsr     draw_ball
+0000344E                           688      
+0000344E  203C 0000005E            689      move.l  #COPY_BUFFER_TRAP, d0
+00003454  4E4F                     690      trap    #15
+00003456                           691      
+00003456  4E75                     692      rts
+00003458                           693      
+00003458                           694  handle_life_lost:
+00003458                           695      ; cmp lives with 0, end game if 0
+00003458  2039 0000358C            696      move.l  Lives, d0
+0000345E  B0BC FFFFFFFF            697      cmp.l   #-1, d0
+00003464  6700 0032                698      beq     handle_game_over
+00003468                           699  
+00003468  4EB8 31B2                700      jsr     inval_life
+0000346C  53B9 0000358C            701      subq.l  #1, Lives
+00003472  52B9 000035BC            702      addq.l  #1, CurrentRound
+00003478                           703      
+00003478  4EB8 11F0                704      jsr     play_lose_life_sound
+0000347C                           705      
+0000347C  4EB9 00003BF2            706      jsr     draw_paddle_rail
+00003482                           707      
+00003482  4EB8 33C2                708      jsr     reset_ball_paddle
+00003486                           709      
+00003486                           710      ; inval the current round and draw new
+00003486  4EB8 32D8                711      jsr     inval_round
+0000348A  4EB8 327C                712      jsr     draw_round
+0000348E                           713      
+0000348E  4EB8 3310                714      jsr     countdown_timer_display
+00003492                           715      
+00003492  4EB8 105E                716      jsr     time_calculations
+00003496                           717      
+00003496  4E75                     718      rts
+00003498                           719      
+00003498                           720  handle_game_over:
+00003498  4EB8 11B0                721      jsr     play_game_over_sound
+0000349C                           722      
+0000349C                           723      ; inval screen
+0000349C  203C 00000051            724      move.l  #SET_FILL_TRAP, d0
+000034A2  223C 00000000            725      move.l  #BLACK, d1
+000034A8  4E4F                     726      trap    #15
+000034AA                           727      
+000034AA  203C 00000050            728      move.l  #SET_PEN_COLOR_TRAP, d0
+000034B0  223C 00000000            729      move.l  #BLACK, d1
+000034B6  4E4F                     730      trap    #15
+000034B8                           731      
+000034B8  203C 00000057            732      move.l  #FILLED_RECT_TRAP, d0
+000034BE  7200                     733      move.l  #0, d1
+000034C0  7400                     734      move.l  #0, d2
+000034C2  263C 00000320            735      move.l  #SCREEN_WIDTH, d3
+000034C8  283C 00000258            736      move.l  #SCREEN_HEIGHT, d4
+000034CE  4E4F                     737      trap    #15
+000034D0                           738      
+000034D0  203C 0000005F            739      move.l  #DRAW_STRING_TRAP, d0
+000034D6  43F9 00003566            740      lea     GameOverText, a1
+000034DC  223C 0000015E            741      move.l  #(SCREEN_WIDTH/2-50), d1
+000034E2  243C 0000012C            742      move.l  #(SCREEN_HEIGHT/2), d2
+000034E8  4E4F                     743      trap    #15
+000034EA                           744      
+000034EA                           745      ; display game over + stats
+000034EA  2039 000035C0            746      move.l  BricksHit, d0
+000034F0  D1B9 000035C4            747      add.l   d0, TotalBricksHit
+000034F6  2239 000035C4            748      move.l  TotalBricksHit, d1
+000034FC                           749      
+000034FC  203C 0000005E            750      move.l  #COPY_BUFFER_TRAP, d0
+00003502  4E4F                     751      trap    #15
+00003504                           752      
+00003504  6000 DB76                753      bra     end
+00003508                           754      
+00003508                           755  win_state:
+00003508  4EB8 11E0                756      jsr     play_win_sound
+0000350C                           757      
+0000350C                           758      ; inval screen
+0000350C  203C 00000051            759      move.l  #SET_FILL_TRAP, d0
+00003512  223C 00000000            760      move.l  #BLACK, d1
+00003518  4E4F                     761      trap    #15
+0000351A                           762      
+0000351A  203C 00000050            763      move.l  #SET_PEN_COLOR_TRAP, d0
+00003520  223C 00000000            764      move.l  #BLACK, d1
+00003526  4E4F                     765      trap    #15
+00003528                           766      
+00003528  203C 00000057            767      move.l  #FILLED_RECT_TRAP, d0
+0000352E  7200                     768      move.l  #0, d1
+00003530  7400                     769      move.l  #0, d2
+00003532  263C 00000320            770      move.l  #SCREEN_WIDTH, d3
+00003538  283C 00000258            771      move.l  #SCREEN_HEIGHT, d4
+0000353E  4E4F                     772      trap    #15
+00003540                           773      
+00003540  203C 0000005F            774      move.l  #DRAW_STRING_TRAP, d0
+00003546  43F9 00003583            775      lea     WinText, a1
+0000354C  223C 0000015E            776      move.l  #(SCREEN_WIDTH/2-50), d1
+00003552  243C 0000012C            777      move.l  #(SCREEN_HEIGHT/2), d2
+00003558  4E4F                     778      trap    #15
+0000355A                           779      
+0000355A  203C 0000005E            780      move.l  #COPY_BUFFER_TRAP, d0
+00003560  4E4F                     781      trap    #15
+00003562                           782      
+00003562  6000 DB18                783      bra     end
+00003566                           784  
+00003566                           785  
+00003566= 47 61 6D 65 20 4F ...    786  GameOverText    dc.b    'Game Over', 0
+00003570= 54 6F 74 61 6C 20 ...    787  StatsText       dc.b    'Total Bricks Hit: ', 0
+00003583= 59 6F 75 20 57 69 ...    788  WinText         dc.b    'You Win!', 0
+0000358C                           789      
+0000358C= 00000004                 790  Lives           dc.l    4
+00003590= 02B9 00F0 02C5 00FC      791  LifePositions   dc.w    697, 240, 709, 252
+00003598= 02D7 00F0 02E3 00FC      792                  dc.w    727, 240, 739, 252
+000035A0= 02F5 00F0 0301 00FC      793                  dc.w    757, 240, 769, 252
+000035A8= 02B9 0118 02C5 0124      794                  dc.w    697, 280, 709, 292
+000035B0= 02D7 0118 02E3 0124      795                  dc.w    727, 280, 739, 292
+000035B8                           796  
+000035B8= 00000001                 797  CurrentLevel    dc.l    1
+000035BC= 00000001                 798  CurrentRound    dc.l    1
+000035C0= 00000000                 799  BricksHit       dc.l    0
+000035C4                           800  
+000035C4= 00000000                 801  TotalBricksHit  dc.l    0
+000035C8                           802  
+000035C8                           803  
+000035C8                           804  
+000035C8                           805  
+000035C8                           806  
+000035C8                           807  
+000035C8                           808  
+000035C8                           809  
+000035C8                           810  
+000035C8                           811  
+000035C8                           812  
+000035C8                           813  
+000035C8                           814  
+000035C8                           815  
+000035C8                           816  
+000035C8                           817  -------------------- end include --------------------
+000035C8                           818      include 'seven_segment_display.X68'
+000035C8                           819  
+000035C8                           820  ; input parameters:
+000035C8                           821  ; number to display, x coordinate, y coordinate
+000035C8  =0000000C                822  NUM_TO_DISPLAY  equ     12
+000035C8  =00000008                823  X_COORD         equ     8
+000035C8  =00000004                824  Y_COORD         equ     4
+000035C8                           825  
+000035C8  =00000007                826  NUM_SEGMENTS    equ     7
+000035C8                           827  
+000035C8                           828  segment_display:
+000035C8                           829      ; this subroutine can be called provided the above 3 params are pushed
+000035C8                           830      ; on the stack
+000035C8  202F 000C                831      move.l  NUM_TO_DISPLAY(sp), d0
+000035CC                           832      
+000035CC                           833      ; load bitmask for the number
+000035CC  41F9 00003620            834      lea     SegmentTable, a0
+000035D2  1C30 0000                835      move.b  (a0, d0), d6
+000035D6                           836      
+000035D6                           837      ; load the coordinates and draw segments
+000035D6  43F9 0000362A            838      lea     SegmentPositions, a1
+000035DC                           839      
+000035DC  7A06                     840      moveq.l  #NUM_SEGMENTS-1, d5 ; 6 for segment A, 5 for segment B, etc
+000035DE                           841      
+000035DE  203C 00000051            842      move.l  #SET_FILL_TRAP, d0
+000035E4  223C 00FFFFFF            843      move.l  #WHITE, d1
+000035EA  4E4F                     844      trap    #15
+000035EC                           845      
+000035EC  203C 00000057            846      move.l  #FILLED_RECT_TRAP, d0
+000035F2                           847          
+000035F2                           848  render_loop:
+000035F2                           849      ; load segment position
+000035F2  3219                     850      move.w  (a1)+, d1
+000035F4  3419                     851      move.w  (a1)+, d2
+000035F6                           852      
+000035F6  3619                     853      move.w  (a1)+, d3
+000035F8  3819                     854      move.w  (a1)+, d4
+000035FA                           855  
+000035FA                           856      ; test segment bit and render if set
+000035FA  0B06                     857      btst    d5, d6
+000035FC  6700 0018                858      beq     skip_segment
+00003600                           859      
+00003600                           860      ; x, y offset
+00003600  D2AF 0008                861      add.l   X_COORD(sp), d1
+00003604  D4AF 0004                862      add.l   Y_COORD(sp), d2
+00003608                           863      
+00003608  D6AF 0008                864      add.l   X_COORD(sp), d3
+0000360C  D8AF 0004                865      add.l   Y_COORD(sp), d4
+00003610                           866      
+00003610  4EB9 0000361C            867      jsr     render_segment
+00003616                           868      
+00003616                           869  skip_segment:
+00003616  51CD FFDA                870      dbra    d5, render_loop
+0000361A                           871      
+0000361A  4E75                     872      rts
+0000361C                           873      
+0000361C                           874  render_segment:
+0000361C                           875      ; draw the segment
+0000361C  4E4F                     876      trap    #15
+0000361E                           877      
+0000361E  4E75                     878      rts
+00003620                           879  
+00003620= 7E 30 6D 79 33 5B ...    880  SegmentTable        dc.b    $7E, $30, $6D, $79, $33, $5B, $5F, $70, $7F, $7B
+0000362A                           881  
+0000362A= 0000 0000 000A 0000      882  SegmentPositions    dc.w    0, 0, 10, 0 ; A
+00003632= 000A 0000 000A 000A      883                      dc.w    10, 0, 10, 10 ; B
+0000363A= 000A 000A 000A 0014      884                      dc.w    10, 10, 10, 20 ; C
+00003642= 000A 0014 0000 0014      885                      dc.w    10, 20, 0, 20 ; D
+0000364A= 0000 0014 0000 000A      886                      dc.w    0, 20, 0, 10 ; E
+00003652= 0000 000A 0000 0000      887                      dc.w    0, 10, 0, 0 ; F
+0000365A= 0000 000A 000A 000A      888                      dc.w    0, 10, 10, 10 ; G
+00003662                           889  
+00003662                           890  
+00003662                           891  
+00003662                           892  -------------------- end include --------------------
+00003662                           893      include 'physics_collisions.X68'
+00003662                           894  
+00003662  =00000008                895  FRAC_BITS           equ     8
+00003662  =00000004                896  PADDLE_SEGMENT_SIZE equ     4
+00003662  =00000400                897  PADDLE_OFFSET       equ     4<<FRAC_BITS
+00003662  =00000400                898  PADDLE_VEL          equ     4<<FRAC_BITS
+00003662  =00000480                899  MAX_BALL_VEL        equ     1152
+00003662  =0000003C                900  VEL_CONSTANT        equ     60
+00003662                           901      
+00003662                           902  check_collisions:
+00003662                           903  ball_wall:
+00003662                           904      ; check if ball is colliding with a wall
+00003662                           905      check_left_wall:
+00003662  2039 0000396E            906          move.l  BallXPos, d0
+00003668  0480 00002100            907          sub.l   #START_SCREEN, d0
+0000366E  B0BC 00000700            908          cmp.l   #BALL_SIZE, d0
+00003674  6C00 0016                909          bge     check_right_wall
+00003678  44B9 00003976            910          neg.l   BallXVel
+0000367E  23FC 00002800 0000396E   911          move.l  #BALL_SIZE+START_SCREEN, BallXPos
+00003688  4EB8 1200                912          jsr     play_collision_sound
+0000368C                           913          
+0000368C                           914      check_right_wall:
+0000368C  2039 0000396E            915          move.l  BallXPos, d0
+00003692  223C 00031900            916          move.l  #(screen_width<<FRAC_BITS)-BALL_SIZE, d1
+00003698  0481 0000A500            917          sub.l   #END_SCREEN, d1
+0000369E  B081                     918          cmp.l   d1, d0
+000036A0  6F00 0012                919          ble     check_top_wall
+000036A4  44B9 00003976            920          neg.l   BallXVel
+000036AA  23C1 0000396E            921          move.l  d1, BallXPos
+000036B0  4EB8 1200                922          jsr     play_collision_sound
+000036B4                           923  
+000036B4                           924      check_top_wall:
+000036B4  2039 00003972            925          move.l  BallYPos, d0
+000036BA  0480 00002100            926          sub.l   #START_SCREEN, d0
+000036C0  B0BC 00000700            927          cmp.l   #BALL_SIZE, d0
+000036C6  6C00 0016                928          bge     check_bottom_wall
+000036CA  44B9 0000397A            929          neg.l   BallYVel
+000036D0  23FC 00002800 00003972   930          move.l  #BALL_SIZE+START_SCREEN, BallYPos
+000036DA  4EB8 1200                931          jsr     play_collision_sound
+000036DE                           932  
+000036DE                           933      check_bottom_wall:
+000036DE  2039 00003972            934          move.l  BallYPos, d0
+000036E4  B0BC 00025100            935          cmp.l   #(SCREEN_HEIGHT<<FRAC_BITS)-BALL_SIZE, d0
+000036EA  6F00 001A                936          ble     end_ball_wall
+000036EE  44B9 0000397A            937          neg.l   BallYVel
+000036F4  23FC 00025100 00003972   938          move.l  #(SCREEN_HEIGHT<<FRAC_BITS)-BALL_SIZE, BallYPos
+000036FE                           939          
+000036FE  4EB8 3458                940          jsr     handle_life_lost
+00003702  6000 D902                941          bra     game_loop
+00003706                           942          
+00003706                           943      end_ball_wall:
+00003706                           944          
+00003706                           945  ball_paddle:
+00003706                           946      ; check if ball is colliding with the paddle (accounting for position)
+00003706                           947      ; check for collision
+00003706  2039 00003986            948      move.l  BallRight, d0
+0000370C  B0B9 0000399A            949      cmp.l   PaddleLeft, d0
+00003712  6D00 009C                950      blt     no_collision
+00003716                           951      
+00003716  2039 00003982            952      move.l  BallLeft, d0
+0000371C  B0B9 0000399E            953      cmp.l   PaddleRight, d0
+00003722  6E00 008C                954      bgt     no_collision
+00003726                           955      
+00003726  2039 0000398E            956      move.l  BallBottom, d0
+0000372C  B0B9 000039A2            957      cmp.l   PaddleTop, d0
+00003732  6D00 007C                958      blt     no_collision
+00003736                           959      
+00003736  2039 0000398A            960      move.l  BallTop, d0
+0000373C  B0B9 000039A6            961      cmp.l   PaddleBottom, d0
+00003742  6E00 006C                962      bgt     no_collision
+00003746                           963      
+00003746                           964      ; ball is colliding with the paddle if we get here
+00003746  4EB8 1200                965      jsr     play_collision_sound
+0000374A                           966      
+0000374A                           967      ; set ball outside of paddle (prevents getting stuck inside the paddle)
+0000374A  2039 000039A2            968      move.l  PaddleTop, d0
+00003750  0480 00000A00            969      sub.l   #PADDLE_HEIGHT, d0
+00003756  23C0 00003972            970      move.l  d0, BallYPos
+0000375C                           971      
+0000375C                           972      ; ballx - paddlex
+0000375C  2039 0000396E            973      move.l  BallXPos, d0
+00003762  E080                     974      asr.l   #FRAC_BITS, d0
+00003764  2239 0000399A            975      move.l  PaddleLeft, d1
+0000376A  E081                     976      asr.l   #FRAC_BITS, d1
+0000376C  9081                     977      sub.l   d1, d0
+0000376E                           978      
+0000376E                           979      ; calculate segment index
+0000376E  80FC 0004                980      divu.w  #PADDLE_SEGMENT_SIZE, d0
+00003772  4281                     981      clr.l   d1
+00003774  3200                     982      move.w  d0, d1
+00003776                           983      
+00003776                           984      ; ensure segment index is within bounds
+00003776  B27C 0000                985      cmp.w   #0, d1
+0000377A  6D00 0010                986      blt     adjust_to_min_segment
+0000377E  B2BC 00000014            987      cmp.l   #20, d1
+00003784  6C00 000E                988      bge     adjust_to_max_segment
+00003788  6000 000E                989      bra     proceed_with_vel
+0000378C                           990      
+0000378C                           991      adjust_to_min_segment:
+0000378C  323C 0000                992          move.w  #0, d1
+00003790  6000 0006                993          bra     proceed_with_vel
+00003794                           994          
+00003794                           995      adjust_to_max_segment:
+00003794  323C 0013                996          move.w  #19, d1
+00003798                           997          
+00003798                           998      proceed_with_vel:
+00003798  4BF9 000039BA            999          lea     VelocityTable, a5
+0000379E  E581                    1000          asl.l   #2, d1
+000037A0  2035 1000               1001          move.l  (a5, d1), d0
+000037A4  23C0 00003976           1002          move.l  d0, BallXVel
+000037AA                          1003              
+000037AA  44B9 0000397A           1004          neg.l   BallYVel
+000037B0                          1005          
+000037B0                          1006      
+000037B0                          1007      no_collision:
+000037B0                          1008  
+000037B0                          1009  ball_bricks:
+000037B0                          1010      ; check if ball is colliding with the bricks
+000037B0                          1011      ; when a ball hits left side of a brick, negate y vel, and decrease x vel by a constant. 
+000037B0                          1012      ; when a ball hits right side of a brick, negate y vel and increase x vel by a constant. 
+000037B0                          1013      ; when a ball hits middle of a brick, negate y vel.
+000037B0                          1014      
+000037B0                          1015      ; d0 is the extra register
+000037B0                          1016      ; d1 is left x
+000037B0                          1017      ; d2 is upper y
+000037B0                          1018      ; d3 is right x
+000037B0                          1019      ; d4 is lower y
+000037B0                          1020      ; d5 is color
+000037B0                          1021      ; d6 is num hits
+000037B0                          1022      ; d7 is extra
+000037B0                          1023      
+000037B0                          1024      ; using current level, go to the proper address
+000037B0  2878 317A               1025      move.l  StartLevelAddr, a4
+000037B4  588C                    1026      addq.l  #4, a4 ; skip the num bricks
+000037B6  42B8 317E               1027      clr.l   CurrentBrick
+000037BA  4287                    1028      clr.l   d7
+000037BC                          1029      
+000037BC                          1030      check_next_brick:
+000037BC  2238 3172               1031          move.l  BrickCount, d1
+000037C0  2438 317E               1032          move.l  CurrentBrick, d2
+000037C4  B481                    1033          cmp.l   d1, d2
+000037C6  6700 01A4               1034          beq     end_brick_collision
+000037CA                          1035          
+000037CA  221C                    1036          move.l  (a4)+, d1 ; left x
+000037CC  241C                    1037          move.l  (a4)+, d2 ; upper y
+000037CE  261C                    1038          move.l  (a4)+, d3 ; right x
+000037D0  281C                    1039          move.l  (a4)+, d4 ; lower y
+000037D2  2A1C                    1040          move.l  (a4)+, d5 ; color
+000037D4  2C1C                    1041          move.l  (a4)+, d6 ; num hits
+000037D6                          1042          
+000037D6                          1043          ; check if the current brick has been hit or not
+000037D6  4A86                    1044          tst.l   d6 ; hit status
+000037D8  6700 018A               1045          beq     skip_current_brick
+000037DC                          1046          
+000037DC                          1047          ; check if ball is colliding with brick
+000037DC  2039 00003986           1048          move.l  BallRight, d0
+000037E2  E189                    1049          lsl.l   #FRAC_BITS, d1
+000037E4  B081                    1050          cmp.l   d1, d0
+000037E6  6D00 017C               1051          blt     skip_current_brick
+000037EA                          1052      
+000037EA  2039 00003982           1053          move.l  BallLeft, d0
+000037F0  E18B                    1054          lsl.l   #FRAC_BITS, d3
+000037F2  B083                    1055          cmp.l   d3, d0
+000037F4  6E00 016E               1056          bgt     skip_current_brick
+000037F8                          1057      
+000037F8  2039 0000398E           1058          move.l  BallBottom, d0
+000037FE  E18A                    1059          lsl.l   #FRAC_BITS, d2
+00003800  B082                    1060          cmp.l   d2, d0
+00003802  6D00 0160               1061          blt     skip_current_brick
+00003806                          1062      
+00003806  2039 0000398A           1063          move.l  BallTop, d0
+0000380C  E18C                    1064          lsl.l   #FRAC_BITS, d4
+0000380E  B084                    1065          cmp.l   d4, d0
+00003810  6E00 0152               1066          bgt     skip_current_brick
+00003814                          1067          
+00003814                          1068          ; play brick collision sound
+00003814  4EB8 11C0               1069          jsr     play_brick_break_sound
+00003818                          1070          
+00003818                          1071          ; check which side of the brick that the ball is touching
+00003818                          1072          ; calculate distances from each side
+00003818  2039 0000398E           1073          move.l  BallBottom, d0
+0000381E  9082                    1074          sub.l   d2, d0
+00003820  23C0 000039B2           1075          move.l  d0, DistanceTop
+00003826                          1076          
+00003826  2004                    1077          move.l  d4, d0
+00003828  2E39 0000398A           1078          move.l  BallTop, d7
+0000382E  9087                    1079          sub.l   d7, d0
+00003830  23C0 000039B6           1080          move.l  d0, DistanceBottom
+00003836                          1081          
+00003836  2039 00003986           1082          move.l  BallRight, d0
+0000383C  9081                    1083          sub.l   d1, d0
+0000383E  23C0 000039AA           1084          move.l  d0, DistanceLeft
+00003844                          1085          
+00003844  2003                    1086          move.l  d3, d0
+00003846  2E39 00003982           1087          move.l  BallLeft, d7
+0000384C  9087                    1088          sub.l   d7, d0
+0000384E  23C0 000039AE           1089          move.l  d0, DistanceRight
+00003854                          1090          
+00003854                          1091          ; compare distances to find the smallest one
+00003854                          1092          ; check if top is the smallest
+00003854  2039 000039B2           1093          move.l  DistanceTop, d0
+0000385A  2E39 000039B6           1094          move.l  DistanceBottom, d7
+00003860  B087                    1095          cmp.l   d7, d0
+00003862  6E00 001E               1096          bgt     check_bottom ; bottom < top
+00003866                          1097          
+00003866                          1098          ; here we know top < bottom
+00003866  2E39 000039AA           1099          move.l  DistanceLeft, d7
+0000386C  B087                    1100          cmp.l   d7, d0
+0000386E  6E00 002E               1101          bgt     check_left ; left < top
+00003872                          1102          
+00003872                          1103          ; here we know top < left
+00003872  2E39 000039AE           1104          move.l  DistanceRight, d7
+00003878  B087                    1105          cmp.l   d7, d0
+0000387A  6E00 00AE               1106          bgt     right_collision ; top > right
+0000387E  6000 0034               1107          bra     top_collision ; top is smallest
+00003882                          1108          
+00003882                          1109          check_bottom:
+00003882                          1110              ; check if bottom is the smallest
+00003882                          1111              ; d7 is bottom, we already know bottom < top
+00003882  2039 000039AA           1112              move.l  DistanceLeft, d0
+00003888  BE80                    1113              cmp.l   d0, d7
+0000388A  6E00 0012               1114              bgt     check_left ; left < bottom
+0000388E                          1115              
+0000388E  2039 000039AE           1116              move.l  DistanceRight, d0
+00003894  BE80                    1117              cmp.l   d0, d7
+00003896  6E00 0092               1118              bgt     right_collision ; right < bottom
+0000389A  6000 003C               1119              bra     bottom_collision ; bottom is smallest
+0000389E                          1120              
+0000389E                          1121          check_left:
+0000389E                          1122              ; check if left is smallest
+0000389E  2039 000039AE           1123              move.l  DistanceRight, d0
+000038A4  2E39 000039AA           1124              move.l  DistanceLeft, d7
+000038AA  BE80                    1125              cmp.l   d0, d7
+000038AC  6E00 007C               1126              bgt     right_collision ; right < left
+000038B0  6000 004A               1127              bra     left_collision
+000038B4                          1128                 
+000038B4                          1129          top_collision:
+000038B4  44B9 0000397A           1130              neg.l   BallYVel
+000038BA  23C2 00003972           1131              move.l  d2, BallYPos
+000038C0  04B9 00000700 00003972  1132              sub.l   #BALL_SIZE, BallYPos
+000038CA  04B9 00000400 00003972  1133              sub.l   #PADDLE_OFFSET, BallYPos
+000038D4  6000 007E               1134              bra     continue
+000038D8                          1135                  
+000038D8                          1136          bottom_collision:
+000038D8  44B9 0000397A           1137              neg.l   BallYVel
+000038DE  23C4 00003972           1138              move.l  d4, BallYPos
+000038E4  06B9 00000700 00003972  1139              add.l   #BALL_SIZE, BallYPos
+000038EE  06B9 00000400 00003972  1140              add.l   #PADDLE_OFFSET, BallYPos
+000038F8  6000 005A               1141              bra     continue
+000038FC                          1142              
+000038FC                          1143          left_collision:
+000038FC  44B9 00003976           1144              neg.l   BallXVel
+00003902  04B9 0000003C 00003976  1145              sub.l   #VEL_CONSTANT, BallXVel
+0000390C  23C1 0000396E           1146              move.l  d1, BallXPos
+00003912  04B9 00000700 0000396E  1147              sub.l   #BALL_SIZE, BallXPos
+0000391C  04B9 00000400 0000396E  1148              sub.l   #PADDLE_OFFSET, BallXPos
+00003926  6000 002C               1149              bra     continue
+0000392A                          1150              
+0000392A                          1151          right_collision:
+0000392A  44B9 00003976           1152              neg.l   BallXVel
+00003930  06B9 0000003C 00003976  1153              add.l   #VEL_CONSTANT, BallXVel
+0000393A  23C3 0000396E           1154              move.l  d3, BallXPos
+00003940  06B9 00000700 0000396E  1155              add.l   #BALL_SIZE, BallXPos
+0000394A  06B9 00000400 0000396E  1156              add.l   #PADDLE_OFFSET, BallXPos
+00003954                          1157          
+00003954                          1158      continue:
+00003954                          1159          ; decrement the hit counter for that brick
+00003954  598C                    1160          subq.l  #4, a4
+00003956  5386                    1161          subq.l  #1, d6
+00003958  2886                    1162          move.l  d6, (a4)
+0000395A  588C                    1163          addq.l  #4, a4
+0000395C                          1164      
+0000395C                          1165          ; inval the brick
+0000395C  4EB8 137C               1166          jsr     inval_brick
+00003960                          1167          
+00003960  6000 000A               1168          bra     end_brick_collision
+00003964                          1169                          
+00003964                          1170      skip_current_brick:
+00003964  52B8 317E               1171          addq.l  #1, CurrentBrick
+00003968  6000 FE52               1172          bra     check_next_brick
+0000396C                          1173          
+0000396C                          1174      end_brick_collision:
+0000396C  4E75                    1175          rts
+0000396E                          1176          
+0000396E                          1177  
+0000396E= 00019000                1178  BallXPos        dc.l    (screen_width/2)<<FRAC_BITS
+00003972= 00017C00                1179  BallYPos        dc.l    (SCREEN_HEIGHT/2+80)<<FRAC_BITS
+00003976= 00000000                1180  BallXVel        dc.l    0<<FRAC_BITS
+0000397A= 00000200                1181  BallYVel        dc.l    2<<FRAC_BITS
+0000397E= 00000001                1182  BallYAcc        dc.l    1
+00003982= 00019000                1183  BallLeft        dc.l    (screen_width/2)<<FRAC_BITS
+00003986= 00019000                1184  BallRight       dc.l    (screen_width/2)<<FRAC_BITS
+0000398A= 00019000                1185  BallTop         dc.l    (screen_width/2)<<FRAC_BITS
+0000398E= 00019000                1186  BallBottom      dc.l    (screen_width/2)<<FRAC_BITS
+00003992                          1187  
+00003992= 00019000                1188  PaddleXPos      dc.l    (screen_width/2)<<FRAC_BITS
+00003996= 00022600                1189  PaddleYPos      dc.l    (SCREEN_HEIGHT-50)<<FRAC_BITS
+0000399A= 00000000                1190  PaddleLeft      dc.l    0
+0000399E= 00000000                1191  PaddleRight     dc.l    0
+000039A2= 00000000                1192  PaddleTop       dc.l    0
+000039A6= 00000000                1193  PaddleBottom    dc.l    0
+000039AA                          1194  
+000039AA= 00000000                1195  DistanceLeft    dc.l    0
+000039AE= 00000000                1196  DistanceRight   dc.l    0
+000039B2= 00000000                1197  DistanceTop     dc.l    0
+000039B6= 00000000                1198  DistanceBottom  dc.l    0
+000039BA                          1199  
+000039BA= FFFFFE00 FFFFFE38 ...   1200  VelocityTable   dc.l    -512, -456, -392, -328, -264, -200, -144, -120
+000039DA= FFFFFFA0 FFFFFFC8 ...   1201                  dc.l    -96, -56, 56, 96, 120, 144, 200, 264
+000039FA= 00000148 00000188 ...   1202                  dc.l    328, 392, 456, 512
+00003A0A                          1203  
+00003A0A                          1204  
+00003A0A                          1205  
+00003A0A                          1206  
+00003A0A                          1207  
+00003A0A                          1208  
+00003A0A                          1209  
+00003A0A                          1210  
+00003A0A                          1211  
+00003A0A                          1212  -------------------- end include --------------------
+00003A0A                          1213      include 'input.X68'
+00003A0A                          1214  
+00003A0A  =00002100               1215  START_SCREEN    equ     33<<FRAC_BITS
+00003A0A  =0000A500               1216  END_SCREEN      equ     165<<FRAC_BITS
+00003A0A                          1217  
+00003A0A                          1218  check_inputs:
+00003A0A  203C 00000013           1219      move.l  #INPUT_TRAP, d0
+00003A10  223C 00002527           1220      move.l  #LEFT<<8+RIGHT, d1
+00003A16  4E4F                    1221      trap    #15
+00003A18                          1222      
+00003A18  B2BC 000000FF           1223      cmp.l   #$000000FF, d1
+00003A1E  6700 002C               1224      beq     move_right
+00003A22                          1225  
+00003A22  B2BC 0000FF00           1226      cmp.l   #$0000FF00, d1
+00003A28  6700 0004               1227      beq     move_left
+00003A2C                          1228          
+00003A2C  4E75                    1229      rts
+00003A2E                          1230      
+00003A2E                          1231  move_left:
+00003A2E                          1232      ; checks if the paddle can move left
+00003A2E  2038 3992               1233      move.l  PaddleXPos, d0
+00003A32  0480 00002100           1234      sub.l   #START_SCREEN, d0
+00003A38  0480 00000400           1235      sub.l   #paddle_vel, d0
+00003A3E  B0BC 00002800           1236      cmp.l   #PADDLE_LENGTH, d0
+00003A44  6C00 033E               1237      bge     update_paddle_left ; these functions are in the update_objects file
+00003A48  6000 0022               1238      bra     end_move
+00003A4C                          1239      
+00003A4C                          1240  move_right:
+00003A4C                          1241      ; checks if the paddle can move right
+00003A4C  2038 3992               1242      move.l  PaddleXPos, d0
+00003A50  0680 00000400           1243      add.l   #paddle_vel, d0
+00003A56  223C 0002F800           1244      move.l  #(SCREEN_WIDTH<<FRAC_BITS)-PADDLE_LENGTH, d1
+00003A5C  0481 0000A500           1245      sub.l   #END_SCREEN, d1
+00003A62  B081                    1246      cmp.l   d1, d0
+00003A64  6F00 0346               1247      ble     update_paddle_right
+00003A68  6000 0002               1248      bra     end_move
+00003A6C                          1249      
+00003A6C                          1250  end_move:
+00003A6C  4E75                    1251      rts
+00003A6E                          1252  
+00003A6E                          1253  
+00003A6E                          1254  
+00003A6E                          1255  
+00003A6E                          1256  
+00003A6E                          1257  
+00003A6E                          1258  
+00003A6E                          1259  
+00003A6E                          1260  
+00003A6E                          1261  
+00003A6E                          1262  
+00003A6E                          1263  
+00003A6E                          1264  -------------------- end include --------------------
+00003A6E                          1265      include 'draw_objects.X68'
+00003A6E                          1266  
+00003A6E                          1267  draw_ball:
+00003A6E                          1268      ; draws the ball at a certain location, called every frame
+00003A6E  203C 00000050           1269      move.l  #SET_PEN_COLOR_TRAP, d0
+00003A74  223C 00FFFFFF           1270      move.l  #WHITE, d1
+00003A7A  4E4F                    1271      trap    #15
+00003A7C                          1272  
+00003A7C  2038 396E               1273      move.l  BallXPos, d0
+00003A80  0480 00000700           1274      sub.l   #BALL_SIZE, d0
+00003A86  21C0 3982               1275      move.l  d0, BallLeft
+00003A8A  E080                    1276      asr.l   #FRAC_BITS, d0
+00003A8C  2200                    1277      move.l  d0, d1
+00003A8E                          1278  
+00003A8E  2038 3972               1279      move.l  BallYPos, d0
+00003A92  0480 00000700           1280      sub.l   #BALL_SIZE, d0
+00003A98  21C0 398A               1281      move.l  d0, BallTop
+00003A9C  E080                    1282      asr.l   #FRAC_BITS, d0
+00003A9E  2400                    1283      move.l  d0, d2
+00003AA0                          1284  
+00003AA0  2038 396E               1285      move.l  BallXPos, d0
+00003AA4  0680 00000700           1286      add.l   #BALL_SIZE, d0
+00003AAA  21C0 3986               1287      move.l  d0, BallRight
+00003AAE  E080                    1288      asr.l   #FRAC_BITS, d0
+00003AB0  2600                    1289      move.l  d0, d3
+00003AB2                          1290  
+00003AB2  2038 3972               1291      move.l  BallYPos, d0
+00003AB6  0680 00000700           1292      add.l   #BALL_SIZE, d0
+00003ABC  21C0 398E               1293      move.l  d0, BallBottom
+00003AC0  E080                    1294      asr.l   #FRAC_BITS, d0
+00003AC2  2800                    1295      move.l  d0, d4
+00003AC4                          1296      
+00003AC4  203C 0000005B           1297      move.l  #UNFILL_ELLIPSE_TRAP, d0
+00003ACA  4E4F                    1298      trap    #15
+00003ACC                          1299      
+00003ACC  4E75                    1300      rts
+00003ACE                          1301      
+00003ACE                          1302  draw_paddle:
+00003ACE                          1303      ; draws the paddle at a certain location, called every frame
+00003ACE  203C 00000050           1304      move.l  #SET_PEN_COLOR_TRAP, d0
+00003AD4  223C 00FFFFFF           1305      move.l  #WHITE, d1
+00003ADA  4E4F                    1306      trap    #15
+00003ADC                          1307  
+00003ADC  2038 3992               1308      move.l  PaddleXPos, d0
+00003AE0  0480 00002800           1309      sub.l   #PADDLE_LENGTH, d0
+00003AE6  21C0 399A               1310      move.l  d0, PaddleLeft
+00003AEA  E080                    1311      asr.l   #FRAC_BITS, d0
+00003AEC  2200                    1312      move.l  d0, d1
+00003AEE                          1313      
+00003AEE  2038 3996               1314      move.l  PaddleYPos, d0
+00003AF2  0480 00000A00           1315      sub.l   #PADDLE_HEIGHT, d0
+00003AF8  21C0 39A2               1316      move.l  d0, PaddleTop
+00003AFC  E080                    1317      asr.l   #FRAC_BITS, d0
+00003AFE  2400                    1318      move.l  d0, d2
+00003B00                          1319  
+00003B00  2038 3992               1320      move.l  PaddleXPos, d0
+00003B04  0680 00002800           1321      add.l   #PADDLE_LENGTH, d0
+00003B0A  21C0 399E               1322      move.l  d0, PaddleRight
+00003B0E  E080                    1323      asr.l   #FRAC_BITS, d0
+00003B10  2600                    1324      move.l  d0, d3
+00003B12                          1325  
+00003B12  2038 3996               1326      move.l  PaddleYPos, d0
+00003B16  0680 00000A00           1327      add.l   #PADDLE_HEIGHT, d0
+00003B1C  21C0 39A6               1328      move.l  d0, PaddleBottom
+00003B20  E080                    1329      asr.l   #FRAC_BITS, d0
+00003B22  2800                    1330      move.l  d0, d4
+00003B24                          1331      
+00003B24  203C 0000005A           1332      move.l  #UNFILLED_RECT_TRAP, d0
+00003B2A  4E4F                    1333      trap    #15
+00003B2C                          1334  
+00003B2C  4E75                    1335      rts
+00003B2E                          1336  
+00003B2E                          1337  inval_ball:
+00003B2E                          1338      ; invals the ball at its current location with an offset, called every frame
+00003B2E  203C 00000050           1339      move.l  #SET_PEN_COLOR_TRAP, d0
+00003B34  223C 00000000           1340      move.l  #BLACK, d1
+00003B3A  4E4F                    1341      trap    #15
+00003B3C                          1342      
+00003B3C  203C 00000051           1343      move.l  #SET_FILL_TRAP, d0
+00003B42  223C 00000000           1344      move.l  #BLACK, d1
+00003B48  4E4F                    1345      trap    #15
+00003B4A                          1346      
+00003B4A  2038 396E               1347      move.l  BallXPos, d0
+00003B4E  0480 00000700           1348      sub.l   #BALL_SIZE, d0
+00003B54  E080                    1349      asr.l   #FRAC_BITS, d0
+00003B56  2200                    1350      move.l  d0, d1
+00003B58                          1351  
+00003B58  2038 3972               1352      move.l  BallYPos, d0
+00003B5C  0480 00000700           1353      sub.l   #BALL_SIZE, d0
+00003B62  E080                    1354      asr.l   #FRAC_BITS, d0
+00003B64  2400                    1355      move.l  d0, d2
+00003B66                          1356  
+00003B66  2038 396E               1357      move.l  BallXPos, d0
+00003B6A  0680 00000700           1358      add.l   #BALL_SIZE, d0
+00003B70  E080                    1359      asr.l   #FRAC_BITS, d0
+00003B72  2600                    1360      move.l  d0, d3
+00003B74                          1361  
+00003B74  2038 3972               1362      move.l  BallYPos, d0
+00003B78  0680 00000700           1363      add.l   #BALL_SIZE, d0
+00003B7E  E080                    1364      asr.l   #FRAC_BITS, d0
+00003B80  2800                    1365      move.l  d0, d4
+00003B82                          1366      
+00003B82  203C 00000057           1367      move.l  #FILLED_RECT_TRAP, d0
+00003B88  4E4F                    1368      trap    #15
+00003B8A                          1369      
+00003B8A  4E75                    1370      rts
+00003B8C                          1371      
+00003B8C                          1372  inval_paddle:
+00003B8C                          1373      ; invals the paddle at its current location with an offset, called every frame
+00003B8C  203C 00000050           1374      move.l  #SET_PEN_COLOR_TRAP, d0
+00003B92  223C 00000000           1375      move.l  #BLACK, d1
+00003B98  4E4F                    1376      trap    #15
+00003B9A                          1377      
+00003B9A  203C 00000051           1378      move.l  #SET_FILL_TRAP, d0
+00003BA0  223C 00000000           1379      move.l  #BLACK, d1
+00003BA6  4E4F                    1380      trap    #15
+00003BA8                          1381      
+00003BA8  2038 3992               1382      move.l  PaddleXPos, d0
+00003BAC  0480 00002800           1383      sub.l   #PADDLE_LENGTH, d0
+00003BB2  E080                    1384      asr.l   #FRAC_BITS, d0
+00003BB4  5D80                    1385      sub.l   #6, d0
+00003BB6  2200                    1386      move.l  d0, d1
+00003BB8                          1387      
+00003BB8  2038 3996               1388      move.l  PaddleYPos, d0
+00003BBC  0480 00000A00           1389      sub.l   #PADDLE_HEIGHT, d0
+00003BC2  E080                    1390      asr.l   #FRAC_BITS, d0
+00003BC4  5B80                    1391      sub.l   #5, d0
+00003BC6  2400                    1392      move.l  d0, d2
+00003BC8                          1393  
+00003BC8  2038 3992               1394      move.l  PaddleXPos, d0
+00003BCC  0680 00002800           1395      add.l   #PADDLE_LENGTH, d0
+00003BD2  E080                    1396      asr.l   #FRAC_BITS, d0
+00003BD4  5C80                    1397      add.l   #6, d0
+00003BD6  2600                    1398      move.l  d0, d3
+00003BD8                          1399  
+00003BD8  2038 3996               1400      move.l  PaddleYPos, d0
+00003BDC  0680 00000A00           1401      add.l   #PADDLE_HEIGHT, d0
+00003BE2  E080                    1402      asr.l   #FRAC_BITS, d0
+00003BE4  5A80                    1403      add.l   #5, d0
+00003BE6  2800                    1404      move.l  d0, d4
+00003BE8                          1405      
+00003BE8  203C 00000057           1406      move.l  #FILLED_RECT_TRAP, d0
+00003BEE  4E4F                    1407      trap    #15
+00003BF0                          1408      
+00003BF0  4E75                    1409      rts
+00003BF2                          1410  
+00003BF2                          1411  draw_paddle_rail:
+00003BF2                          1412      ; draws the entire paddle rail
+00003BF2  41F9 00182A92           1413      lea     PaddleRail, a0
+00003BF8  2F08                    1414      move.l  a0, -(sp) ; address of title
+00003BFA  2F3C 0000002D           1415      move.l  #45, -(sp)
+00003C00  2F3C 00000000           1416      move.l  #0, -(sp) ; top left on bitmap
+00003C06  2F3C 00000249           1417      move.l  #585, -(sp) ; width of image
+00003C0C  2F3C 00000005           1418      move.l  #5, -(sp) ; height of image
+00003C12  2F3C 0000002D           1419      move.l  #45, -(sp)
+00003C18  2F3C 00000224           1420      move.l  #TOP_PADDLE_RAIL, -(sp) ; top left on output
+00003C1E  4EB9 00003DE0           1421      jsr     bitmap_subroutine
+00003C24  DFFC 0000001C           1422      add.l   #28, sp
+00003C2A                          1423      
+00003C2A  4E75                    1424      rts
+00003C2C                          1425  
+00003C2C                          1426  ; clamps the width of the image d0 to prevent crashing
+00003C2C                          1427  clamp_width:
+00003C2C  B0BC 00000262           1428      cmp.l   #610, d0
+00003C32  6F00 0008               1429      ble     no_clamp_needed
+00003C36  203C 00000249           1430      move.l  #585, d0
+00003C3C                          1431  no_clamp_needed:
+00003C3C  4E75                    1432      rts
+00003C3E                          1433      
+00003C3E                          1434  ; clamps the left x coordinate d1 to ensure it is within the bitmap boundaries
+00003C3E                          1435  clamp_x:
+00003C3E  B2BC 00000000           1436      cmp.l   #0, d1
+00003C44  6C00 0004               1437      bge     clamp_x_max_check
+00003C48  7200                    1438      move.l  #0, d1
+00003C4A                          1439  
+00003C4A                          1440  clamp_x_max_check:
+00003C4A  B2BC 00000258           1441      cmp.l   #600, d1
+00003C50  6F00 0008               1442      ble     x_clamp_done
+00003C54  223C 00000262           1443      move.l  #610, d1
+00003C5A                          1444  x_clamp_done:
+00003C5A  4E75                    1445      rts
+00003C5C                          1446  
+00003C5C                          1447  inval_paddle_rail:
+00003C5C                          1448  ; redraws the paddle rail whenever the paddle moves
+00003C5C                          1449  redraw_paddle_rail_left:
+00003C5C                          1450      ; paddle moved left
+00003C5C                          1451      ; calculate width in d0
+00003C5C  2039 00003DDC           1452      move.l  OldPaddleRight, d0
+00003C62  E080                    1453      asr.l   #FRAC_BITS, d0
+00003C64  2238 399E               1454      move.l  PaddleRight, d1
+00003C68  E081                    1455      asr.l   #FRAC_BITS, d1
+00003C6A  9081                    1456      sub.l   d1, d0
+00003C6C  6700 0090               1457      beq     no_movement
+00003C70                          1458      
+00003C70  0680 0000000A           1459      add.l   #10, d0
+00003C76                          1460      
+00003C76                          1461      ; ensure that d0 and d1 are never greater than the bitmap width/
+00003C76  4EB8 3C2C               1462      jsr     clamp_width
+00003C7A  4EB8 3C3E               1463      jsr     clamp_x
+00003C7E                          1464  
+00003C7E  41F9 00182A92           1465      lea     PaddleRail, a0
+00003C84  2F08                    1466      move.l  a0, -(sp) ; address of title
+00003C86  2F01                    1467      move.l  d1, -(sp) ; left x
+00003C88  2F3C 00000000           1468      move.l  #0, -(sp) ; top y
+00003C8E  2F00                    1469      move.l  d0, -(sp) ; width of image
+00003C90  2F3C 00000005           1470      move.l  #5, -(sp) ; height of image
+00003C96  2F01                    1471      move.l  d1, -(sp) ; left x (output)
+00003C98  2F3C 00000224           1472      move.l  #TOP_PADDLE_RAIL, -(sp) ; top y (output)
+00003C9E  4EB9 00003DE0           1473      jsr     bitmap_subroutine
+00003CA4  DFFC 0000001C           1474      add.l   #28, sp
+00003CAA                          1475          
+00003CAA                          1476  redraw_paddle_rail_right:
+00003CAA                          1477      ; paddle moved right
+00003CAA                          1478      ; calculate width in d0
+00003CAA  2038 399A               1479      move.l  PaddleLeft, d0
+00003CAE  E080                    1480      asr.l   #FRAC_BITS, d0
+00003CB0  2239 00003DD8           1481      move.l  OldPaddleLeft, d1
+00003CB6  E081                    1482      asr.l   #FRAC_BITS, d1
+00003CB8  9081                    1483      sub.l   d1, d0
+00003CBA  6700 0042               1484      beq     no_movement
+00003CBE                          1485      
+00003CBE  0481 0000000A           1486      sub.l   #10, d1
+00003CC4  0680 0000000A           1487      add.l   #10, d0
+00003CCA                          1488      
+00003CCA  4EB8 3C2C               1489      jsr     clamp_width
+00003CCE  4EB8 3C3E               1490      jsr     clamp_x
+00003CD2                          1491  
+00003CD2  41F9 00182A92           1492      lea     PaddleRail, a0
+00003CD8  2F08                    1493      move.l  a0, -(sp) ; address of title
+00003CDA  2F01                    1494      move.l  d1, -(sp) ; left x
+00003CDC  2F3C 00000000           1495      move.l  #0, -(sp) ; top y
+00003CE2  2F00                    1496      move.l  d0, -(sp) ; width of image
+00003CE4  2F3C 00000005           1497      move.l  #5, -(sp) ; height of image
+00003CEA  2F01                    1498      move.l  d1, -(sp) ; left x (output)
+00003CEC  2F3C 00000224           1499      move.l  #TOP_PADDLE_RAIL, -(sp) ; top y (output)
+00003CF2  4EB9 00003DE0           1500      jsr     bitmap_subroutine
+00003CF8  DFFC 0000001C           1501      add.l   #28, sp
+00003CFE                          1502  
+00003CFE                          1503      no_movement:
+00003CFE  4E75                    1504          rts
+00003D00                          1505  
+00003D00                          1506  
+00003D00                          1507  
+00003D00                          1508  -------------------- end include --------------------
+00003D00                          1509      include 'update_objects.X68'
+00003D00                          1510  
+00003D00                          1511  update_ball:
+00003D00  2238 1080               1512      move.l  DeltaTime, d1
+00003D04                          1513      
+00003D04                          1514      ; update velocity
+00003D04  52B9 00003DD4           1515      addq.l  #1, FrameCounter
+00003D0A  0CB9 0000000A 00003DD4  1516      cmp.l   #10, FrameCounter
+00003D14  6600 004C               1517      bne     update_position ; only increase speed every 10 frames
+00003D18                          1518      
+00003D18  2438 397E               1519      move.l  BallYAcc, d2
+00003D1C  C5C1                    1520      muls.w  d1, d2
+00003D1E                          1521  
+00003D1E                          1522      ; check velocity sign and add or subtract the acceleration accordingly
+00003D1E  4AB8 397A               1523      tst.l   BallYVel
+00003D22  6C00 0004               1524      bge     positive_y_vel
+00003D26  4482                    1525      neg.l   d2
+00003D28                          1526  
+00003D28                          1527      positive_y_vel:
+00003D28  D5B8 397A               1528          add.l   d2, BallYVel
+00003D2C                          1529          
+00003D2C  42B9 00003DD4           1530      clr.l   FrameCounter
+00003D32                          1531  
+00003D32                          1532      clamp_velocity:
+00003D32                          1533          ; clamp at a max speed of 4.5<<FRAC_BITS (1152)
+00003D32  0CB8 FFFFFB80 397A      1534          cmp.l   #-MAX_BALL_VEL, BallYVel
+00003D3A  6F00 0012               1535          ble     clamp_neg_vel
+00003D3E  0CB8 00000480 397A      1536          cmp.l   #MAX_BALL_VEL, BallYVel
+00003D46  6C00 0012               1537          bge     clamp_pos_vel
+00003D4A  6000 0016               1538          bra     update_position
+00003D4E                          1539          
+00003D4E                          1540      clamp_neg_vel:
+00003D4E  21FC FFFFFB80 397A      1541          move.l  #-MAX_BALL_VEL, BallYVel
+00003D56  6000 000A               1542          bra     update_position
+00003D5A                          1543          
+00003D5A                          1544      clamp_pos_vel:
+00003D5A  21FC 00000480 397A      1545          move.l  #MAX_BALL_VEL, BallYVel
+00003D62                          1546      
+00003D62                          1547  update_position:
+00003D62                          1548      ; update position
+00003D62  2438 396E               1549      move.l  BallXPos, d2
+00003D66  2638 3976               1550      move.l  BallXVel, d3
+00003D6A  C7C1                    1551      muls.w  d1, d3
+00003D6C  D483                    1552      add.l   d3, d2
+00003D6E  21C2 396E               1553      move.l  d2, BallXPos
+00003D72                          1554      
+00003D72  2438 3972               1555      move.l  BallYPos, d2
+00003D76  2638 397A               1556      move.l  BallYVel, d3
+00003D7A  C7C1                    1557      muls.w  d1, d3
+00003D7C  D483                    1558      add.l   d3, d2
+00003D7E  21C2 3972               1559      move.l  d2, BallYPos
+00003D82                          1560      
+00003D82  4E75                    1561      rts
+00003D84                          1562  
+00003D84                          1563  update_paddle_left:
+00003D84  2038 399A               1564      move.l  PaddleLeft, d0
+00003D88  23C0 00003DD8           1565      move.l  d0, OldPaddleLeft
+00003D8E  2038 399E               1566      move.l  PaddleRight, d0
+00003D92  23C0 00003DDC           1567      move.l  d0, OldPaddleRight
+00003D98                          1568  
+00003D98  2238 1080               1569      move.l  DeltaTime, d1
+00003D9C  243C 00000400           1570      move.l  #PADDLE_VEL, d2
+00003DA2  C4C1                    1571      mulu.w  d1, d2
+00003DA4  95B8 3992               1572      sub.l   d2, PaddleXPos
+00003DA8  6000 FCC2               1573      bra     end_move
+00003DAC                          1574      
+00003DAC                          1575  update_paddle_right:
+00003DAC  2038 399A               1576      move.l  PaddleLeft, d0
+00003DB0  23C0 00003DD8           1577      move.l  d0, OldPaddleLeft
+00003DB6  2038 399E               1578      move.l  PaddleRight, d0
+00003DBA  23C0 00003DDC           1579      move.l  d0, OldPaddleRight
+00003DC0                          1580      
+00003DC0  2238 1080               1581      move.l  DeltaTime, d1
+00003DC4  243C 00000400           1582      move.l  #PADDLE_VEL, d2
+00003DCA  C4C1                    1583      mulu.w  d1, d2
+00003DCC  D5B8 3992               1584      add.l   d2, PaddleXPos
+00003DD0  6000 FC9A               1585      bra     end_move
+00003DD4                          1586  
+00003DD4= 00000000                1587  FrameCounter    dc.l    0 ; necessary for more gradual acceleration
+00003DD8= 00016800                1588  OldPaddleLeft   dc.l    (SCREEN_WIDTH/2-40)<<FRAC_BITS
+00003DDC= 0001B800                1589  OldPaddleRight  dc.l    (SCREEN_WIDTH/2+40)<<FRAC_BITS
+00003DE0                          1590  
+00003DE0                          1591  
+00003DE0                          1592  
+00003DE0                          1593  -------------------- end include --------------------
+00003DE0                          1594      include 'bitmap_draw.X68'
+00003DE0                          1595  
+00003DE0                          1596  
+00003DE0  =00000050               1597  PEN_COLOR_TRAP  equ     80
+00003DE0  =00000052               1598  DRAW_PIXEL_TRAP equ     82
+00003DE0                          1599  
+00003DE0                          1600  ; parameters
+00003DE0  =0000001C               1601  PTR_BITMAP_DATA equ     28
+00003DE0  =00000018               1602  CHUNK_X         equ     24
+00003DE0  =00000014               1603  CHUNK_Y         equ     20
+00003DE0  =00000010               1604  CHUNK_WIDTH     equ     16
+00003DE0  =0000000C               1605  CHUNK_HEIGHT    equ     12
+00003DE0  =00000008               1606  OUTPUT_X        equ     8
+00003DE0  =00000004               1607  OUTPUT_Y        equ     4
+00003DE0                          1608      
+00003DE0                          1609      
+00003DE0                          1610  ; push 7 arguments onto the stack first.
+00003DE0                          1611  ; 1. pointer to bitmap data file
+00003DE0                          1612  ; 2. x coord left corner of bitmap
+00003DE0                          1613  ; 3. y coord top corner of bitmap
+00003DE0                          1614  ; 4. width on bitmap
+00003DE0                          1615  ; 5. height on bitmap
+00003DE0                          1616  ; 6. x coord left corner of output window
+00003DE0                          1617  ; 7. y coord top corner of output window
+00003DE0                          1618  ; after all args are on the stack, call the bitmap drawing subroutine
+00003DE0                          1619  ; comes to this after rts, fixes stack and then exits the program
+00003DE0                          1620  
+00003DE0                          1621  bitmap_subroutine:
+00003DE0                          1622      ; load in bitmap file
+00003DE0  206F 001C               1623      move.l  PTR_BITMAP_DATA(sp), a0
+00003DE4                          1624      
+00003DE4                          1625      ; first 2 bytes are signature
+00003DE4  3018                    1626      move.w  (a0)+, d0
+00003DE6  3239 00003F74           1627      move.w  bitmap_signature, d1
+00003DEC  B041                    1628      cmp.w   d1, d0
+00003DEE  6700 0010               1629      beq     file_header
+00003DF2                          1630      
+00003DF2                          1631      ; error out if the signature doesn't match the expected
+00003DF2  700D                    1632      move.l  #13, d0
+00003DF4  43F9 00003F76           1633      lea     wrong_signature, a1
+00003DFA  4E4F                    1634      trap    #15
+00003DFC  FFFF FFFF               1635      SIMHALT
+00003E00                          1636  
+00003E00                          1637  file_header:
+00003E00  4280                    1638      clr.l   d0
+00003E02  4281                    1639      clr.l   d1
+00003E04                          1640      
+00003E04                          1641      ; starting address of the pixel data
+00003E04  5088                    1642      add.l   #8, a0
+00003E06  2018                    1643      move.l  (a0)+, d0
+00003E08  E058                    1644      ror.w   #8, d0 ; fast byte swap
+00003E0A  4840                    1645      swap    d0
+00003E0C  E058                    1646      ror.w   #8, d0
+00003E0E  23C0 00003F90           1647      move.l  d0, bitmap_start
+00003E14                          1648      
+00003E14                          1649  image_header:
+00003E14  5888                    1650      add.l   #4, a0 ; skip size of header
+00003E16                          1651      
+00003E16                          1652      ; save the bitmap width
+00003E16  2018                    1653      move.l  (a0)+, d0
+00003E18  E058                    1654      ror.w   #8, d0 ; fast byte swap
+00003E1A  4840                    1655      swap    d0
+00003E1C  E058                    1656      ror.w   #8, d0
+00003E1E  23C0 00003F94           1657      move.l  d0, bitmap_width
+00003E24                          1658      
+00003E24                          1659      ; save the bitmap height
+00003E24  2018                    1660      move.l  (a0)+, d0
+00003E26  E058                    1661      ror.w   #8, d0 ; fast byte swap
+00003E28  4840                    1662      swap    d0
+00003E2A  E058                    1663      ror.w   #8, d0
+00003E2C  23C0 00003F98           1664      move.l  d0, bitmap_height
+00003E32                          1665      
+00003E32  5488                    1666      add.l   #2, a0 ; skip color planes
+00003E34                          1667      
+00003E34                          1668      ; determine color depth (bits per pixel)
+00003E34  4280                    1669      clr.l   d0
+00003E36  3018                    1670      move.w  (a0)+, d0
+00003E38  E058                    1671      ror.w   #8, d0 ; swap
+00003E3A                          1672      
+00003E3A                          1673      ; reset a0
+00003E3A  206F 001C               1674      move.l  PTR_BITMAP_DATA(sp), a0
+00003E3E  D1F9 00003F90           1675      add.l   bitmap_start, a0 ; start of the pixel array
+00003E44                          1676      
+00003E44                          1677      ; 24 bit color
+00003E44  B07C 0018               1678      cmp.w   #24, d0
+00003E48  6700 000C               1679      beq     bit_24
+00003E4C                          1680      
+00003E4C                          1681      ; 32 bit color
+00003E4C  B07C 0020               1682      cmp.w   #32, d0
+00003E50  6700 009A               1683      beq     bit_32
+00003E54                          1684      
+00003E54  4E75                    1685      rts
+00003E56                          1686  
+00003E56                          1687  ; 1 pixel value per 3 bytes
+00003E56                          1688  ; d3 is number of padding bytes
+00003E56                          1689  ; (d4, d5) is (x, y) (start at bottom left)
+00003E56                          1690  ; (d6, d7) is (width, height)
+00003E56                          1691  bit_24:
+00003E56                          1692      ; x and y positions on the output window
+00003E56  282F 0008               1693      move.l  OUTPUT_X(sp), d4
+00003E5A  2A2F 0004               1694      move.l  OUTPUT_Y(sp), d5
+00003E5E  DAAF 000C               1695      add.l   CHUNK_HEIGHT(sp), d5
+00003E62  5385                    1696      sub.l   #1, d5
+00003E64                          1697      
+00003E64                          1698      ; calculate rowsize = floor((24 * bitmap_width + 31) / 32) * 4 (in bytes)
+00003E64  2639 00003F94           1699      move.l  bitmap_width, d3
+00003E6A  C6FC 0018               1700      mulu.w  #24, d3
+00003E6E  0683 0000001F           1701      add.l   #31, d3
+00003E74  EA83                    1702      asr.l   #5, d3 ; divide by 32
+00003E76  E58B                    1703      lsl.l   #2, d3
+00003E78                          1704      
+00003E78                          1705      ; calculating start position a0
+00003E78                          1706      ; bottom row = bitmap_height - (CHUNK_Y + CHUNK_HEIGHT)
+00003E78  222F 0014               1707      move.l  CHUNK_Y(sp), d1
+00003E7C  242F 000C               1708      move.l  CHUNK_HEIGHT(sp), d2
+00003E80  D481                    1709      add.l   d1, d2
+00003E82  2239 00003F98           1710      move.l  bitmap_height, d1
+00003E88  9282                    1711      sub.l   d2, d1 ; d1 has bottom_row index
+00003E8A                          1712      
+00003E8A                          1713      ; calculate offset
+00003E8A                          1714      ; offset = bottom_row * rowsize + (CHUNK_X * 3)
+00003E8A  C2C3                    1715      mulu.w  d3, d1
+00003E8C  242F 0018               1716      move.l  CHUNK_X(sp), d2
+00003E90  C4FC 0003               1717      mulu.w  #3, d2
+00003E94  D481                    1718      add.l   d1, d2
+00003E96  D1C2                    1719      add.l   d2, a0
+00003E98                          1720      
+00003E98                          1721      ; number of padding bytes = rowsize - (bitmap_width * 3)
+00003E98  2C39 00003F94           1722      move.l  bitmap_width, d6
+00003E9E  CCFC 0003               1723      mulu.w  #3, d6
+00003EA2  9686                    1724      sub.l   d6, d3
+00003EA4                          1725      
+00003EA4                          1726      ; calculate number of pixels to skip at the end of each row
+00003EA4                          1727      ; (bitmap_width - CHUNK_WIDTH) * 3 + pad bytes
+00003EA4  2439 00003F94           1728      move.l  bitmap_width, d2
+00003EAA  94AF 0010               1729      sub.l   CHUNK_WIDTH(sp), d2
+00003EAE  C4FC 0003               1730      mulu.w  #3, d2
+00003EB2  D682                    1731      add.l   d2, d3
+00003EB4                          1732      
+00003EB4                          1733      ; setting height counter (width is set below)
+00003EB4  2E2F 000C               1734      move.l  CHUNK_HEIGHT(sp), d7
+00003EB8  5387                    1735      sub.l   #1, d7
+00003EBA                          1736      
+00003EBA                          1737  bit_24_y:
+00003EBA                          1738      ; resetting the x and counter
+00003EBA  282F 0008               1739      move.l  OUTPUT_X(sp), d4
+00003EBE  2C2F 0010               1740      move.l  CHUNK_WIDTH(sp), d6
+00003EC2  5386                    1741      sub.l   #1, d6
+00003EC4                          1742      
+00003EC4                          1743  bit_24_x:
+00003EC4                          1744      ; set pen color
+00003EC4  4281                    1745      clr.l   d1
+00003EC6  7050                    1746      move.l  #PEN_COLOR_TRAP, d0
+00003EC8  1218                    1747      move.b  (a0)+, d1
+00003ECA  E189                    1748      lsl.l   #8, d1
+00003ECC  1218                    1749      move.b  (a0)+, d1
+00003ECE  E189                    1750      lsl.l   #8, d1
+00003ED0  1218                    1751      move.b  (a0)+, d1 ; all 3 bgr set in d1 ($00BBGGRR)
+00003ED2  4E4F                    1752      trap    #15
+00003ED4                          1753      
+00003ED4                          1754      ; draw the pixel
+00003ED4  7052                    1755      move.l  #DRAW_PIXEL_TRAP, d0
+00003ED6  2204                    1756      move.l  d4, d1
+00003ED8  2405                    1757      move.l  d5, d2
+00003EDA  4E4F                    1758      trap    #15
+00003EDC                          1759      
+00003EDC  5284                    1760      add.l   #1, d4 ; increment x coord
+00003EDE  51CE FFE4               1761      dbra    d6, bit_24_x ; decrement width counter and keep looping
+00003EE2                          1762      
+00003EE2  D1C3                    1763      add.l   d3, a0 ; skip the padding bytes
+00003EE4                          1764      
+00003EE4  5385                    1765      sub.l   #1, d5 ; decrement y coord
+00003EE6  51CF FFD2               1766      dbra    d7, bit_24_y ; decrement height counter and keep looping
+00003EEA                          1767      
+00003EEA  4E75                    1768      rts
+00003EEC                          1769  
+00003EEC                          1770  ; 1 pixel value per 4 bytes
+00003EEC                          1771  ; d3 is number of padding bytes
+00003EEC                          1772  ; (d4, d5) is (x, y) (start at bottom left)
+00003EEC                          1773  ; (d6, d7) is (width, height)
+00003EEC                          1774  bit_32:
+00003EEC                          1775      ; x and y positions on the output window
+00003EEC  282F 0008               1776      move.l  OUTPUT_X(sp), d4
+00003EF0  2A2F 0004               1777      move.l  OUTPUT_Y(sp), d5
+00003EF4  DAAF 000C               1778      add.l   CHUNK_HEIGHT(sp), d5
+00003EF8  5385                    1779      sub.l   #1, d5
+00003EFA                          1780      
+00003EFA                          1781      ; calculate rowsize = floor((32 * bitmap_width + 31) / 32) * 4 (in bytes)
+00003EFA  2639 00003F94           1782      move.l  bitmap_width, d3
+00003F00  EB8B                    1783      lsl.l   #5, d3 ; multiply by 32
+00003F02  0683 0000001F           1784      add.l   #31, d3
+00003F08  EA83                    1785      asr.l   #5, d3 ; divide by 32
+00003F0A  E58B                    1786      lsl.l   #2, d3
+00003F0C                          1787      
+00003F0C                          1788      ; calculating start position a0
+00003F0C                          1789      ; bottom row = bitmap_height - (CHUNK_Y + CHUNK_HEIGHT)
+00003F0C  222F 0014               1790      move.l  CHUNK_Y(sp), d1
+00003F10  242F 000C               1791      move.l  CHUNK_HEIGHT(sp), d2
+00003F14  D481                    1792      add.l   d1, d2
+00003F16  2239 00003F98           1793      move.l  bitmap_height, d1
+00003F1C  9282                    1794      sub.l   d2, d1 ; d1 has bottom_row index
+00003F1E                          1795      
+00003F1E                          1796      ; calculate offset (starting point taking into account chunk params)
+00003F1E                          1797      ; offset = bottom_row * rowsize + (CHUNK_X * 4)
+00003F1E  C2C3                    1798      mulu.w  d3, d1
+00003F20  242F 0018               1799      move.l  CHUNK_X(sp), d2
+00003F24  E58A                    1800      lsl.l   #2, d2
+00003F26  D481                    1801      add.l   d1, d2
+00003F28  D1C2                    1802      add.l   d2, a0
+00003F2A                          1803      
+00003F2A                          1804      ; number of padding bytes = rowsize - (bitmap_width * 4)
+00003F2A  2C39 00003F94           1805      move.l  bitmap_width, d6
+00003F30  E58E                    1806      lsl.l   #2, d6
+00003F32  9686                    1807      sub.l   d6, d3
+00003F34                          1808      
+00003F34                          1809      ; calculate number of pixels to skip at the end of each row
+00003F34                          1810      ; (bitmap_width - CHUNK_WIDTH) * 4 + pad bytes
+00003F34  2439 00003F94           1811      move.l  bitmap_width, d2
+00003F3A  94AF 0010               1812      sub.l   CHUNK_WIDTH(sp), d2
+00003F3E  E58A                    1813      lsl.l   #2, d2
+00003F40  D682                    1814      add.l   d2, d3
+00003F42                          1815      
+00003F42                          1816      ; setting height counter (width is set below)
+00003F42  2E2F 000C               1817      move.l  CHUNK_HEIGHT(sp), d7
+00003F46  5387                    1818      sub.l   #1, d7
+00003F48                          1819      
+00003F48                          1820  bit_32_y:
+00003F48                          1821      ; resetting the x and counter
+00003F48  282F 0008               1822      move.l  OUTPUT_X(sp), d4
+00003F4C  2C2F 0010               1823      move.l  CHUNK_WIDTH(sp), d6 ; width counter
+00003F50  5386                    1824      sub.l   #1, d6
+00003F52                          1825      
+00003F52                          1826  bit_32_x:
+00003F52                          1827      ; set pen color
+00003F52  4281                    1828      clr.l   d1
+00003F54  7050                    1829      move.l  #PEN_COLOR_TRAP, d0
+00003F56  2218                    1830      move.l  (a0)+, d1 ; moving the pixel color (BBGGRRAA format)
+00003F58  E089                    1831      lsr.l   #8, d1 ; shift to 00BBGGRR format
+00003F5A                          1832      
+00003F5A  4E4F                    1833      trap    #15
+00003F5C                          1834      
+00003F5C                          1835      ; draw the pixel
+00003F5C  7052                    1836      move.l  #DRAW_PIXEL_TRAP, d0
+00003F5E  2204                    1837      move.l  d4, d1
+00003F60  2405                    1838      move.l  d5, d2
+00003F62  4E4F                    1839      trap    #15
+00003F64                          1840      
+00003F64  5284                    1841      add.l   #1, d4 ; increment x coord
+00003F66  51CE FFEA               1842      dbra    d6, bit_32_x ; decrement width counter and keep looping
+00003F6A                          1843      
+00003F6A  D1C3                    1844      add.l   d3, a0 ; skip the padding bytes
+00003F6C                          1845      
+00003F6C  5385                    1846      sub.l   #1, d5 ; decrement y coord
+00003F6E  51CF FFD8               1847      dbra    d7, bit_32_y ; decrement height counter and keep looping
+00003F72                          1848      
+00003F72  4E75                    1849      rts
+00003F74                          1850  
+00003F74= 42 4D                   1851  bitmap_signature:   dc.b    'BM'
+00003F76= 49 6E 63 6F 72 72 ...   1852  wrong_signature:    dc.b    'Incorrect File Signature', 0
+00003F90= 00000000                1853  bitmap_start:       dc.l    0
+00003F94= 00000000                1854  bitmap_width:       dc.l    0
+00003F98= 00000000                1855  bitmap_height:      dc.l    0
+00003F9C                          1856  
+00003F9C                          1857  
+00003F9C                          1858  
+00003F9C                          1859  
+00003F9C                          1860  
+00003F9C                          1861  
+00003F9C                          1862  -------------------- end include --------------------
+00003F9C                          1863      include 'initial_screens.X68'
+00003F9C                          1864  
+00003F9C                          1865  ; magic numbers
+00003F9C  =00000320               1866  SCREEN_WIDTH        equ     800
+00003F9C  =00000258               1867  SCREEN_HEIGHT       equ     600
+00003F9C  =00000700               1868  BALL_SIZE           equ     7<<FRAC_BITS
+00003F9C  =00002800               1869  PADDLE_LENGTH       equ     40<<FRAC_BITS
+00003F9C  =00000A00               1870  PADDLE_HEIGHT       equ     10<<FRAC_BITS
+00003F9C  =00000224               1871  TOP_PADDLE_RAIL     equ     548
+00003F9C                          1872  
+00003F9C                          1873  ; trap codes
+00003F9C  =00000008               1874  TIME_MIDNIGHT_TRAP  equ     8
+00003F9C  =00000021               1875  SCREEN_SIZE_TRAP    equ     33
+00003F9C  =0000005C               1876  DRAWING_MODE_TRAP   equ     92
+00003F9C  =00000013               1877  INPUT_TRAP          equ     19
+00003F9C  =0000005E               1878  COPY_BUFFER_TRAP    equ     94
+00003F9C  =0000000B               1879  CLEAR_SCREEN_TRAP   equ     11
+00003F9C  =0000005F               1880  DRAW_STRING_TRAP    equ     95
+00003F9C  =00000051               1881  SET_FILL_TRAP       equ     81
+00003F9C  =00000057               1882  FILLED_RECT_TRAP    equ     87
+00003F9C  =0000005A               1883  UNFILLED_RECT_TRAP  equ     90
+00003F9C  =00000058               1884  FILL_ELLIPSE_TRAP   equ     88
+00003F9C  =0000005B               1885  UNFILL_ELLIPSE_TRAP equ     91
+00003F9C  =00000050               1886  SET_PEN_COLOR_TRAP  equ     80
+00003F9C  =00000015               1887  SET_FONT_TRAP       equ     21
+00003F9C  =00000017               1888  DELAY_TRAP          equ     23
+00003F9C                          1889  
+00003F9C  =00000011               1890  DOUBLE_BUFFER       equ     17
+00003F9C                          1891  
+00003F9C                          1892  ; input keycodes
+00003F9C  =00000025               1893  LEFT                equ     $25
+00003F9C  =00000027               1894  RIGHT               equ     $27
+00003F9C                          1895  
+00003F9C                          1896  ; colors
+00003F9C  =00000000               1897  BLACK               equ     $00000000
+00003F9C  =00FFFFFF               1898  WHITE               equ     $00FFFFFF
+00003F9C  =000028D8               1899  RED                 equ     $000028D8
+00003F9C                          1900  
+00003F9C                          1901  initialization:
+00003F9C                          1902      ; seed random number
+00003F9C  4EB8 1088               1903      jsr     seed_random_number
+00003FA0                          1904  
+00003FA0                          1905      ; double buffer
+00003FA0  705C                    1906      move.l  #DRAWING_MODE_TRAP, d0
+00003FA2  7211                    1907      move.l  #DOUBLE_BUFFER, d1
+00003FA4  4E4F                    1908      trap    #15
+00003FA6                          1909      
+00003FA6                          1910      ; set screen size
+00003FA6  7021                    1911      move.l  #SCREEN_SIZE_TRAP, d0
+00003FA8  223C 03200258           1912      move.l  #SCREEN_WIDTH<<16+SCREEN_HEIGHT, d1
+00003FAE  4E4F                    1913      trap    #15
+00003FB0                          1914              
+00003FB0                          1915      ; display loading screen (allowing for title to fully draw)
+00003FB0  705F                    1916      move.l  #DRAW_STRING_TRAP, d0
+00003FB2  43F9 00004188           1917      lea     LoadingText, a1
+00003FB8  223C 00000172           1918      move.l  #SCREEN_WIDTH/2-30, d1
+00003FBE  243C 0000010E           1919      move.l  #SCREEN_HEIGHT/2-30, d2
+00003FC4  4E4F                    1920      trap    #15
+00003FC6                          1921      
+00003FC6  705E                    1922      move.l  #COPY_BUFFER_TRAP, d0
+00003FC8  4E4F                    1923      trap    #15
+00003FCA                          1924                  
+00003FCA                          1925      ; load title
+00003FCA  41F9 000041A0           1926      lea     Title, a0
+00003FD0  2F08                    1927      move.l  a0, -(sp) ; address of title
+00003FD2  2F3C 00000000           1928      move.l  #0, -(sp)
+00003FD8  2F3C 00000000           1929      move.l  #0, -(sp) ; top left on bitmap
+00003FDE  2F3C 00000320           1930      move.l  #SCREEN_WIDTH, -(sp) ; width of image
+00003FE4  2F3C 00000258           1931      move.l  #SCREEN_HEIGHT, -(sp) ; height of image
+00003FEA  2F3C 00000000           1932      move.l  #0, -(sp)
+00003FF0  2F3C 00000000           1933      move.l  #0, -(sp) ; top left on output
+00003FF6  4EB8 3DE0               1934      jsr     bitmap_subroutine
+00003FFA  DFFC 0000001C           1935      add.l   #28, sp
+00004000                          1936          
+00004000  705E                    1937      move.l  #COPY_BUFFER_TRAP, d0
+00004002  4E4F                    1938      trap    #15
+00004004                          1939      
+00004004                          1940  initial_input:
+00004004                          1941      ; check for input (left or right)
+00004004  7013                    1942      move.l  #INPUT_TRAP, d0
+00004006  223C 00002527           1943      move.l  #LEFT<<8+RIGHT, d1
+0000400C  4E4F                    1944      trap    #15
+0000400E                          1945      
+0000400E  4A81                    1946      tst.l   d1
+00004010  67F2                    1947      beq     initial_input
+00004012                          1948      
+00004012  7051                    1949      move.l  #SET_FILL_TRAP, d0
+00004014  7200                    1950      move.l  #BLACK, d1
+00004016  4E4F                    1951      trap    #15
+00004018                          1952      
+00004018                          1953      ; invals the title
+00004018  7057                    1954      move.l  #FILLED_RECT_TRAP, d0
+0000401A  7200                    1955      move.l  #0, d1
+0000401C  7400                    1956      move.l  #0, d2
+0000401E  263C 00000320           1957      move.l  #SCREEN_WIDTH, d3
+00004024  283C 00000258           1958      move.l  #SCREEN_HEIGHT, d4
+0000402A  4E4F                    1959      trap    #15
+0000402C                          1960      
+0000402C  705E                    1961      move.l  #COPY_BUFFER_TRAP, d0
+0000402E  4E4F                    1962      trap    #15
+00004030                          1963      
+00004030                          1964  initial_level:
+00004030                          1965      ; loading text
+00004030  705F                    1966      move.l  #DRAW_STRING_TRAP, d0
+00004032  43F9 00004188           1967      lea     LoadingText, a1
+00004038  223C 00000172           1968      move.l  #SCREEN_WIDTH/2-30, d1
+0000403E  243C 0000010E           1969      move.l  #SCREEN_HEIGHT/2-30, d2
+00004044  4E4F                    1970      trap    #15
+00004046                          1971      
+00004046  705E                    1972      move.l  #COPY_BUFFER_TRAP, d0
+00004048  4E4F                    1973      trap    #15
+0000404A                          1974      
+0000404A                          1975      ; inval the loading text
+0000404A  7050                    1976      move.l  #SET_PEN_COLOR_TRAP, d0
+0000404C  7200                    1977      move.l  #BLACK, d1
+0000404E  4E4F                    1978      trap    #15
+00004050                          1979      
+00004050  7051                    1980      move.l  #SET_FILL_TRAP, d0
+00004052  7200                    1981      move.l  #BLACK, d1
+00004054  4E4F                    1982      trap    #15
+00004056                          1983      
+00004056  7057                    1984      move.l  #FILLED_RECT_TRAP, d0
+00004058  7200                    1985      move.l  #0, d1
+0000405A  7400                    1986      move.l  #0, d2
+0000405C  2238 0320               1987      move.l  SCREEN_WIDTH, d1
+00004060  2438 0258               1988      move.l  SCREEN_HEIGHT, d2
+00004064  4E4F                    1989      trap    #15
+00004066                          1990  
+00004066                          1991      ; load level
+00004066  4EB8 1290               1992      jsr     load_level_file
+0000406A                          1993      
+0000406A                          1994      ; load sounds
+0000406A  4EB8 115E               1995      jsr     load_sounds
+0000406E                          1996      
+0000406E                          1997      ; draw rail
+0000406E  4EB8 3BF2               1998      jsr     draw_paddle_rail
+00004072                          1999      
+00004072                          2000      ; load frame
+00004072  4EB9 000040A4           2001      jsr     game_frame
+00004078                          2002      
+00004078                          2003      ; draw side info
+00004078  4EB9 00004148           2004      jsr     draw_info
+0000407E                          2005      
+0000407E                          2006      ; draw the lives and numbers
+0000407E  4EB8 3182               2007      jsr     draw_lives
+00004082  4EB8 3200               2008      jsr     draw_level_num
+00004086  4EB8 327C               2009      jsr     draw_round
+0000408A                          2010      
+0000408A                          2011      ; draw the objects
+0000408A  4EB8 3ACE               2012      jsr     draw_paddle
+0000408E  4EB8 3A6E               2013      jsr     draw_ball
+00004092                          2014      
+00004092  4EB8 3310               2015      jsr     countdown_timer_display
+00004096                          2016  
+00004096                          2017      ; set last time
+00004096  7008                    2018      move.l  #TIME_MIDNIGHT_TRAP, d0
+00004098  4E4F                    2019      trap    #15
+0000409A  21C1 1084               2020      move.l  d1, LastTime
+0000409E                          2021      
+0000409E  705E                    2022      move.l  #COPY_BUFFER_TRAP, d0
+000040A0  4E4F                    2023      trap    #15
+000040A2                          2024      
+000040A2  4E75                    2025      rts
+000040A4                          2026      
+000040A4                          2027  game_frame:
+000040A4                          2028      ; draws a frame around the play window
+000040A4                          2029      ; left side
+000040A4  41F9 00173FFC           2030      lea     FrameSide, a0
+000040AA  2F08                    2031      move.l  a0, -(sp) ; address of title
+000040AC  2F3C 00000000           2032      move.l  #0, -(sp)
+000040B2  2F3C 00000000           2033      move.l  #0, -(sp) ; top left on bitmap
+000040B8  2F3C 0000001A           2034      move.l  #26, -(sp) ; width of image
+000040BE  2F3C 00000258           2035      move.l  #600, -(sp) ; height of image
+000040C4  2F3C 00000003           2036      move.l  #3, -(sp)
+000040CA  2F3C 00000000           2037      move.l  #0, -(sp) ; top left on output
+000040D0  4EB8 3DE0               2038      jsr     bitmap_subroutine
+000040D4  DFFC 0000001C           2039      add.l   #28, sp
+000040DA                          2040      
+000040DA                          2041      ; right side
+000040DA  41F9 00173FFC           2042      lea     FrameSide, a0
+000040E0  2F08                    2043      move.l  a0, -(sp) ; address of title
+000040E2  2F3C 00000000           2044      move.l  #0, -(sp)
+000040E8  2F3C 00000000           2045      move.l  #0, -(sp) ; top left on bitmap
+000040EE  2F3C 00000019           2046      move.l  #25, -(sp) ; width of image
+000040F4  2F3C 00000258           2047      move.l  #600, -(sp) ; height of image
+000040FA  2F3C 00000282           2048      move.l  #642, -(sp)
+00004100  2F3C 00000000           2049      move.l  #0, -(sp) ; top left on output
+00004106  4EB8 3DE0               2050      jsr     bitmap_subroutine
+0000410A  DFFC 0000001C           2051      add.l   #28, sp
+00004110                          2052      
+00004110                          2053      ; top
+00004110  41F9 00163AD6           2054      lea     FrameTop, a0
+00004116  2F08                    2055      move.l  a0, -(sp) ; address of title
+00004118  2F3C 00000000           2056      move.l  #0, -(sp)
+0000411E  2F3C 00000000           2057      move.l  #0, -(sp) ; top left on bitmap
+00004124  2F3C 0000029C           2058      move.l  #668, -(sp) ; width of image
+0000412A  2F3C 00000019           2059      move.l  #25, -(sp) ; height of image
+00004130  2F3C 00000000           2060      move.l  #0, -(sp)
+00004136  2F3C 00000000           2061      move.l  #0, -(sp) ; top left on output
+0000413C  4EB8 3DE0               2062      jsr     bitmap_subroutine
+00004140  DFFC 0000001C           2063      add.l   #28, sp
+00004146                          2064  
+00004146  4E75                    2065      rts
+00004148                          2066      
+00004148                          2067  draw_info:
+00004148                          2068      ; draws the score and round number
+00004148                          2069      ; set font properties
+00004148  7015                    2070      move.l  #SET_FONT_TRAP, d0
+0000414A  223C 000028D8           2071      move.l  #RED, d1
+00004150  243C 01180000           2072      move.l  #$01180000, d2
+00004156  4E4F                    2073      trap    #15
+00004158                          2074      
+00004158  7051                    2075      move.l  #SET_FILL_TRAP, d0
+0000415A  7200                    2076      move.l  #BLACK, d1
+0000415C  4E4F                    2077      trap    #15
+0000415E                          2078  
+0000415E  705F                    2079      move.l  #DRAW_STRING_TRAP, d0
+00004160  43F9 00004193           2080      lea     LevelText, a1
+00004166  223C 000002B2           2081      move.l  #SCREEN_WIDTH-110, d1
+0000416C  740A                    2082      move.l  #10, d2
+0000416E  4E4F                    2083      trap    #15
+00004170                          2084      
+00004170  705F                    2085      move.l  #DRAW_STRING_TRAP, d0
+00004172  43F9 00004199           2086      lea     RoundText, a1
+00004178  223C 000002B2           2087      move.l  #SCREEN_WIDTH-110, d1
+0000417E  243C 000001EF           2088      move.l  #495, d2
+00004184  4E4F                    2089      trap    #15
+00004186                          2090  
+00004186  4E75                    2091      rts
+00004188                          2092     
+00004188                          2093      
+00004188= 4C 6F 61 64 69 6E ...   2094  LoadingText     dc.b    'Loading...', 0
+00004193= 4C 65 76 65 6C 00       2095  LevelText       dc.b    'Level', 0
+00004199= 52 6F 75 6E 64 00       2096  RoundText       dc.b    'Round', 0
+0000419F                          2097  
+0000419F= 00                      2098  Padding         dc.b    0
+000041A0                          2099  Title           INCBIN  "assets/title.bmp"
+00163AD6                          2100  FrameTop        INCBIN  "assets/frame_top.bmp"
+00173FFC                          2101  FrameSide       INCBIN  "assets/frame_side.bmp"
+00182A92                          2102  PaddleRail      INCBIN  "assets/paddle_rail.bmp"
+001859A8                          2103  
+001859A8                          2104  
+001859A8                          2105  
+001859A8                          2106  
+001859A8                          2107  
+001859A8                          2108  
+001859A8                          2109  
+001859A8                          2110  
+001859A8                          2111  
+001859A8                          2112  
+001859A8                          2113  
+001859A8                          2114  
+001859A8                          2115  
+001859A8                          2116  -------------------- end include --------------------
+001859A8                          2117  
+001859A8                          2118      END    START        ; last line of source
+
+No errors detected
+No warnings generated
+
+
+SYMBOL TABLE INFORMATION
+Symbol-name         Value
+-------------------------
+ADJUST_TO_MAX_SEGMENT  3794
+ADJUST_TO_MIN_SEGMENT  378C
+ALL_REG             7FFF
+BALLBOTTOM          398E
+BALLLEFT            3982
+BALLRIGHT           3986
+BALLTOP             398A
+BALLXPOS            396E
+BALLXVEL            3976
+BALLYACC            397E
+BALLYPOS            3972
+BALLYVEL            397A
+BALL_BRICKS         37B0
+BALL_PADDLE         3706
+BALL_SIZE           700
+BALL_WALL           3662
+BITMAP_HEIGHT       3F98
+BITMAP_SIGNATURE    3F74
+BITMAP_START        3F90
+BITMAP_SUBROUTINE   3DE0
+BITMAP_WIDTH        3F94
+BIT_24              3E56
+BIT_24_X            3EC4
+BIT_24_Y            3EBA
+BIT_32              3EEC
+BIT_32_X            3F52
+BIT_32_Y            3F48
+BLACK               0
+BOTTOM_COLLISION    38D8
+BRICKBREAKSOUND     1226
+BRICKCOUNT          3172
+BRICKSHIT           35C0
+BRICK_SIZE          18
+CHECK_BOTTOM        3882
+CHECK_BOTTOM_WALL   36DE
+CHECK_COLLISIONS    3662
+CHECK_INPUTS        3A0A
+CHECK_LEFT          389E
+CHECK_LEFT_WALL     3662
+CHECK_NEXT_BRICK    37BC
+CHECK_RIGHT_WALL    368C
+CHECK_TOP_WALL      36B4
+CHUNK_HEIGHT        C
+CHUNK_WIDTH         10
+CHUNK_X             18
+CHUNK_Y             14
+CLAMP_NEG_VEL       3D4E
+CLAMP_POS_VEL       3D5A
+CLAMP_VELOCITY      3D32
+CLAMP_WIDTH         3C2C
+CLAMP_X             3C3E
+CLAMP_X_MAX_CHECK   3C4A
+CLEAR_SCREEN_TRAP   B
+COLLISIONSOUND      1276
+CONTINUE            3954
+CONTINUE_INVAL_BRICK  13AA
+COPY_BUFFER_TRAP    5E
+COUNTDOWN_LOOP      3312
+COUNTDOWN_TIMER_DISPLAY  3310
+CURRENTBRICK        317E
+CURRENTLEVEL        35B8
+CURRENTROUND        35BC
+DELAY_TRAP          17
+DELTATIME           1080
+DISTANCEBOTTOM      39B6
+DISTANCELEFT        39AA
+DISTANCERIGHT       39AE
+DISTANCETOP         39B2
+DONE_DRAWING_LEVEL  1300
+DOUBLE_BUFFER       11
+DRAWING_MODE_TRAP   5C
+DRAW_BALL           3A6E
+DRAW_INFO           4148
+DRAW_LEVEL_FILE     129C
+DRAW_LEVEL_NUM      3200
+DRAW_LIVES          3182
+DRAW_NEXT_BRICK     12BA
+DRAW_PADDLE         3ACE
+DRAW_PADDLE_RAIL    3BF2
+DRAW_PIXEL_TRAP     52
+DRAW_ROUND          327C
+DRAW_STRING_TRAP    5F
+END                 107C
+END_BALL_WALL       3706
+END_BRICK_COLLISION  396C
+END_LEVEL           FFFFFFFF
+END_MOVE            3A6C
+END_SCREEN          A500
+FILE_HEADER         3E00
+FILLED_RECT_TRAP    57
+FILL_ELLIPSE_TRAP   58
+FRAC_BITS           8
+FRAMECOUNTER        3DD4
+FRAMESIDE           173FFC
+FRAMETOP            163AD6
+GAMEOVERSOUND       1210
+GAMEOVERTEXT        3566
+GAME_FRAME          40A4
+GAME_LOOP           1006
+GET_TIME_COMMAND    8
+HANDLE_GAME_OVER    3498
+HANDLE_LIFE_LOST    3458
+IMAGE_HEADER        3E14
+INITIALIZATION      3F9C
+INITIAL_INPUT       4004
+INITIAL_LEVEL       4030
+INPUT_TRAP          13
+INVAL_BALL          3B2E
+INVAL_BRICK         137C
+INVAL_COUNTDOWN_TIMER  3370
+INVAL_LEVEL_NUM     3254
+INVAL_LIFE          31B2
+INVAL_PADDLE        3B8C
+INVAL_PADDLE_RAIL   3C5C
+INVAL_ROUND         32D8
+LASTTIME            1084
+LEFT                25
+LEFT_COLLISION      38FC
+LEVELFILE           13D6
+LEVELOFFSET         3176
+LEVELTEXT           4193
+LEVEL_INFO          8
+LIFEPOSITIONS       3590
+LIFE_LOOP           318E
+LIVES               358C
+LOADINGTEXT         4188
+LOAD_LEVEL_FILE     1290
+LOAD_SOUNDS         115E
+LOAD_SOUND_TRAP     4A
+LOSELIFESOUND       1262
+MAX_BALL_VEL        480
+MOVE_LEFT           3A2E
+MOVE_RIGHT          3A4C
+MULTI_HIT_COLOR     13BE
+NEXTLEVELSOUND      123C
+NEXT_LEVEL          1302
+NINC0               10FC
+NINC1               1104
+NO_CLAMP_NEEDED     3C3C
+NO_COLLISION        37B0
+NO_MOVEMENT         3CFE
+NUM_SEGMENTS        7
+NUM_TO_DISPLAY      C
+OLDPADDLELEFT       3DD8
+OLDPADDLERIGHT      3DDC
+OUTPUT_X            8
+OUTPUT_Y            4
+PADDING             419F
+PADDINGLONG         128C
+PADDLEBOTTOM        39A6
+PADDLELEFT          399A
+PADDLERAIL          182A92
+PADDLERIGHT         399E
+PADDLETOP           39A2
+PADDLEXPOS          3992
+PADDLEYPOS          3996
+PADDLE_HEIGHT       A00
+PADDLE_LENGTH       2800
+PADDLE_OFFSET       400
+PADDLE_SEGMENT_SIZE  4
+PADDLE_VEL          400
+PEN_COLOR_TRAP      50
+PLAY_BRICK_BREAK_SOUND  11C0
+PLAY_COLLISION_SOUND  1200
+PLAY_GAME_OVER_SOUND  11B0
+PLAY_LOSE_LIFE_SOUND  11F0
+PLAY_NEXT_LEVEL_SOUND  11D0
+PLAY_SOUND_TRAP     4B
+PLAY_WIN_SOUND      11E0
+POSITIVE_Y_VEL      3D28
+PROCEED_WITH_VEL    3798
+PTR_BITMAP_DATA     1C
+RANDOMVAL           1154
+RANDOM_BYTE_D6      10E6
+RANDOM_LONG_D6      1120
+RANDOM_WORD_D6      10A0
+RED                 28D8
+REDRAW_PADDLE_RAIL_LEFT  3C5C
+REDRAW_PADDLE_RAIL_RIGHT  3CAA
+RENDER_LOOP         35F2
+RENDER_SEGMENT      361C
+RESET_BALL_PADDLE   33C2
+RIGHT               27
+RIGHT_COLLISION     392A
+ROUNDTEXT           4199
+SCREEN_HEIGHT       258
+SCREEN_SIZE_TRAP    21
+SCREEN_WIDTH        320
+SEED_RANDOM_NUMBER  1088
+SEGMENTPOSITIONS    362A
+SEGMENTTABLE        3620
+SEGMENT_DISPLAY     35C8
+SET_FILL_TRAP       51
+SET_FONT_TRAP       15
+SET_PEN_COLOR_TRAP  50
+SKIP_CURRENT_BRICK  3964
+SKIP_SEGMENT        3616
+START               1000
+STARTLEVELADDR      317A
+START_SCREEN        2100
+STATSTEXT           3570
+TEMPRANDOMLONG      1158
+TEMPRANDOMWORD      115C
+TIME_CALCULATIONS   105E
+TIME_MIDNIGHT_TRAP  8
+TITLE               41A0
+TOP_COLLISION       38B4
+TOP_PADDLE_RAIL     224
+TOTALBRICKSHIT      35C4
+UNFILLED_RECT_TRAP  5A
+UNFILL_ELLIPSE_TRAP  5B
+UPDATE_BALL         3D00
+UPDATE_PADDLE_LEFT  3D84
+UPDATE_PADDLE_RIGHT  3DAC
+UPDATE_POSITION     3D62
+VELOCITYTABLE       39BA
+VEL_CONSTANT        3C
+WHITE               FFFFFF
+WINSOUND            124F
+WINTEXT             3583
+WIN_STATE           3508
+WRONG_SIGNATURE     3F76
+X_CLAMP_DONE        3C5A
+X_COORD             8
+Y_COORD             4
